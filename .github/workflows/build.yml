@@ -23,12 +23,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install "tensorflow==2.13.1" "tensorflowjs==3.21.0" h5py
 
-      # Конвертируем твою Keras-модель -> TFJS (получим web_model/model.json + *.bin)
+      # Конвертируем твою Keras-модель -> TFJS (получим site/web_model/model.json + *.bin)
       - name: Convert Keras -> TFJS
         run: |
           python - <<'PY'
           import os, tensorflow as tf, tensorflowjs as tfjs
-          src = "model_final.keras"  # если у тебя best_model.h5 — замени тут
+          src = "model_final.keras"  # если у тебя best_model.h5 — замени имя тут
           out = "site/web_model"
           os.makedirs(out, exist_ok=True)
           m = tf.keras.models.load_model(src, compile=False)
