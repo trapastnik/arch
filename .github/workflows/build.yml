@@ -2,11 +2,7 @@ name: build
 
 on:
   push:
-    branches:
-      - main
-      - master
   pull_request:
-  workflow_dispatch:
 
 jobs:
   build:
@@ -20,107 +16,76 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python 3.10
+      - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      - name: Show env
-        run: |
-          set -euxo pipefail
-          python -V
-          pip -V
-
-      - name: Install pinned base (TF 2.12 + NumPy 1.23.5)
+      - name: Upgrade pip tooling
         run: |
           set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
-
-          # Базовые совместимые пины
-          pip install \
-            "numpy==1.23.5" \
-            "h5py==3.10.0" \
-            "protobuf==3.20.3" \
-            "packaging==23.2" \
-            "typing_extensions==4.5.0"
-
-          pip install \
-            "tensorflow-cpu==2.12.0" \
-            "tensorflow-estimator==2.12.0" \
-            "tensorboard==2.12.3"
-
-          # Зависимости, которые требуют конвертеры
-          pip install "pandas==2.0.3" "wurlitzer==3.1.1"
-
-          # Очистим возможные остатки
-          pip uninstall -y tensorflowjs jax jaxlib || true
-
           python - <<'PY'
-          import numpy, tensorflow as tf, pandas
-          print(f"✅ Base OK  | NumPy: {numpy.__version__} | TF: {tf.__version__} | pandas: {pandas.__version__}")
+          import pip, pkgutil
+          print(f"✅ Pip OK: {pip.__version__}")
           PY
 
-      - name: Install TensorFlow.js toolchain (safe pins)
+      - name: Install base (TF 2.12.0 + NumPy 1.23.5 compatible pins)
         run: |
           set -euxo pipefail
-          # TFJS 4.8.0 тянет конвертер, который импортирует tensorflow_decision_forests.
-          # Ставим совместимую версию под TF 2.12.
-          pip install --no-deps "tensorflow-decision-forests==1.4.0"
-
-          # Сам tfjs CLI (без автоподтягивания свежих конфликтных deps)
-          pip install --no-deps "tensorflowjs==4.8.0"
-
-          # Быстрая проверка импортов
+          # Strict pins that are known-good with TF 2.12.0 on Py3.10
+          pip install \
+            numpy==1.23.5 \
+            h5py==3.10.0 \
+            packaging==23.2 \
+            typing_extensions==4.5.0 \
+            protobuf==3.20.3
+          pip install \
+            tensorflow-cpu==2.12.0 \
+            tensorflow-estimator==2.12.0 \
+            tensorboard==2.12.3
           python - <<'PY'
           import numpy as np, tensorflow as tf
-          import tensorflowjs as tfjs
-          a, b = tf.constant([1.]), tf.constant([2.]); _ = a + b
-          print("✅ TFJS import OK:", "NumPy", np.__version__, "TF", tf.__version__, "TFJS", tfjs.__version__)
+          print("✅ Base OK | NumPy:", np.__version__, "| TF:", tf.__version__)
           PY
 
-      - name: Convert model to TFJS (if present)
+      - name: Install TFJS converter deps (no heavy transitive deps)
         run: |
           set -euxo pipefail
-          mkdir -p public/web_model
+          # Extras required by tensorflowjs converters, installed without pulling newer TF/JAX
+          pip install --no-deps tensorflow-decision-forests==1.4.0
+          pip install --no-deps tensorflow-hub==0.12.0
+          pip install --no-deps tensorflowjs==4.8.0
+          python - <<'PY'
+          import numpy as np, tensorflow as tf, tensorflowjs as tfjs
+          # Make sure converter submodules import (they import tfdf and hub)
+          from tensorflowjs.converters import tf_saved_model_conversion_v2 as _conv
+          a, b = tf.constant([1.]), tf.constant([2.]); _ = a + b
+          print("✅ TFJS import OK | NumPy", np.__version__, "| TF", tf.__version__, "| TFJS", tfjs.__version__)
+          PY
 
-          if [ -d "saved_model" ]; then
+      - name: (Optional) Convert SavedModel to TFJS if model exists
+        run: |
+          set -euxo pipefail
+          # Change these paths to your actual SavedModel dir and output dir
+          SRC_MODEL_DIR="model/saved_model"
+          OUT_DIR="public/web_model"
+          if [ -d "$SRC_MODEL_DIR" ]; then
+            mkdir -p "$OUT_DIR"
             python - <<'PY'
-            import os, tensorflowjs as tfjs
-            src = "saved_model"; dst = "public/web_model/savedmodel"
-            os.makedirs(dst, exist_ok=True)
+            import tensorflow as tf, tensorflowjs as tfjs, os
+            src = os.environ.get("SRC_MODEL_DIR")
+            dst = os.environ.get("OUT_DIR")
             tfjs.converters.convert_tf_saved_model(src, dst)
-            print("✅ Converted SavedModel →", dst)
+            print("✅ Converted SavedModel -> TFJS at", dst)
             PY
+          else
+            echo "ℹ️ No SavedModel found at ${SRC_MODEL_DIR}; skipping conversion."
           fi
 
-          if [ -f "model.h5" ]; then
-            python - <<'PY'
-            import os, tensorflow as tf, tensorflowjs as tfjs
-            model = tf.keras.models.load_model("model.h5")
-            dst = "public/web_model/keras_h5"
-            os.makedirs(dst, exist_ok=True)
-            tfjs.converters.save_keras_model(model, dst)
-            print("✅ Converted Keras H5 →", dst)
-            PY
-          fi
-
-          if ls *.keras >/dev/null 2>&1; then
-            python - <<'PY'
-            import os, glob, tensorflow as tf, tensorflowjs as tfjs
-            f = glob.glob("*.keras")[0]
-            model = tf.keras.models.load_model(f)
-            dst = "public/web_model/keras"
-            os.makedirs(dst, exist_ok=True)
-            tfjs.converters.save_keras_model(model, dst)
-            print("✅ Converted Keras .keras →", dst)
-            PY
-          fi
-
-          echo "ℹ️ Модели не найдены — шаг конвертации пропущен."
-
-      - name: Upload web model artifact (if any)
+      - name: Upload web_model artifact (if created)
+        if: ${{ hashFiles('public/web_model/**') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: web_model
           path: public/web_model
-          if-no-files-found: warn
