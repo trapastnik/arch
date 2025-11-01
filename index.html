@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Распознавание планшетов</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
+<style>body{background:#111;color:#fff;font-family:sans-serif;text-align:center}
+video{width:90vw;max-width:480px;border-radius:12px;margin-top:16px}#result{margin:12px auto;font-size:1.1rem}</style>
+</head><body>
+<h2>📷 Распознавание архитектурных планшетов</h2>
+<video id="video" autoplay playsinline></video>
+<div id="result">Загрузка модели…</div>
+<script>
+const MODEL_URL='web_model/model.json', MAP_URL='class_mapping.json';
+let model,mapping;
+async function init(){
+  model=await tf.loadLayersModel(MODEL_URL);
+  mapping=await fetch(MAP_URL).then(r=>r.json());
+  const v=document.getElementById('video');
+  const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+  v.srcObject=s; await new Promise(r=>v.onloadedmetadata=r);
+  setInterval(()=>predict(v),600);
+  document.getElementById('result').innerText='Камера готова';
+}
+async function predict(v){
+  const x=tf.tidy(()=>tf.image.resizeBilinear(tf.browser.fromPixels(v),[224,224]).toFloat().div(127.5).sub(1).expandDims(0));
+  let y=model.predict(x); if(y.softmax) y=y.softmax();
+  const p=await y.data(); const i=p.indexOf(Math.max(...p));
+  const name=(mapping[String(i)]??`class_${i}`), conf=(p[i]*100).toFixed(1);
+  document.getElementById('result').innerText=`🧩 ${name} (${conf}%)`;
+  tf.dispose([x,y]);
+}
+init().catch(e=>document.getElementById('result').innerText='Ошибка: '+e.message);
+</script></body></html>
