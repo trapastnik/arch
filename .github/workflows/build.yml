@@ -1,39 +1,117 @@
-3s
-Run set -euxo pipefail
-+ pip install --no-deps tensorflowjs==4.8.0
-Collecting tensorflowjs==4.8.0
-  Downloading tensorflowjs-4.8.0-py3-none-any.whl.metadata (3.1 kB)
-Downloading tensorflowjs-4.8.0-py3-none-any.whl (85 kB)
-Installing collected packages: tensorflowjs
-Successfully installed tensorflowjs-4.8.0
-+ python -
-2025-11-01 22:29:32.759372: I tensorflow/core/platform/cpu_feature_guard.cc:182] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
-To enable the following instructions: AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
-Traceback (most recent call last):
-  File "<stdin>", line 2, in <module>
-  File "/opt/hostedtoolcache/Python/3.10.19/x64/lib/python3.10/site-packages/tensorflowjs/__init__.py", line 21, in <module>
-    from tensorflowjs import converters
-  File "/opt/hostedtoolcache/Python/3.10.19/x64/lib/python3.10/site-packages/tensorflowjs/converters/__init__.py", line 21, in <module>
-    from tensorflowjs.converters.converter import convert
-  File "/opt/hostedtoolcache/Python/3.10.19/x64/lib/python3.10/site-packages/tensorflowjs/converters/converter.py", line 37, in <module>
-    from tensorflowjs.converters import tf_saved_model_conversion_v2
-  File "/opt/hostedtoolcache/Python/3.10.19/x64/lib/python3.10/site-packages/tensorflowjs/converters/tf_saved_model_conversion_v2.py", line 28, in <module>
-    import tensorflow_decision_forests
-ModuleNotFoundError: No module named 'tensorflow_decision_forests'
-Error: Process completed with exit code 1.
-0s
-0s
-0s
-0s
-Post job cleanup.
-/usr/bin/git version
-git version 2.51.2
-Temporarily overriding HOME='/home/runner/work/_temp/617bc9ff-3aba-42fe-a317-91bd0959f288' before making global git config changes
-Adding repository directory to the temporary git global config as a safe directory
-/usr/bin/git config --global --add safe.directory /home/runner/work/arch/arch
-/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
-/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
-/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
-http.https://github.com/.extraheader
-/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
-/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+name: build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PIP_NO_PYTHON_VERSION_WARNING: "1"
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Show env
+        run: |
+          set -euxo pipefail
+          python -V
+          pip -V
+
+      - name: Install pinned base (TF 2.12 + NumPy 1.23.5)
+        run: |
+          set -euxo pipefail
+          python -m pip install --upgrade pip setuptools wheel
+
+          pip install \
+            "numpy==1.23.5" \
+            "h5py==3.10.0" \
+            "protobuf==3.20.3" \
+            "packaging==23.2" \
+            "typing_extensions==4.5.0"
+
+          pip install \
+            "tensorflow-cpu==2.12.0" \
+            "tensorflow-estimator==2.12.0" \
+            "tensorboard==2.12.3"
+
+          pip install "pandas==2.0.3" "wurlitzer==3.1.1"
+
+          pip uninstall -y tensorflowjs jax jaxlib || true
+
+          python - <<'PY'
+          import numpy, tensorflow as tf, pandas
+          print(f"✅ Base OK | NumPy: {numpy.__version__} | TF: {tf.__version__} | pandas: {pandas.__version__}")
+          PY
+
+      - name: Install TensorFlow.js CLI (safe)
+        run: |
+          set -euxo pipefail
+          pip install --no-deps "tensorflowjs==4.8.0"
+
+          python - <<'PY'
+          import numpy as np, tensorflow as tf
+          import tensorflowjs as tfjs
+          a, b = tf.constant([1.]), tf.constant([2.]); _ = a + b
+          print("✅ TFJS import OK:", "NumPy", np.__version__, "TF", tf.__version__, "TFJS", tfjs.__version__)
+          PY
+
+      - name: Convert model to TFJS (if present)
+        run: |
+          set -euxo pipefail
+          mkdir -p public/web_model
+
+          if [ -d "saved_model" ]; then
+            python - <<'PY'
+            import os, tensorflowjs as tfjs
+            src = "saved_model"; dst = "public/web_model/savedmodel"
+            os.makedirs(dst, exist_ok=True)
+            tfjs.converters.convert_tf_saved_model(src, dst)
+            print("✅ Converted SavedModel →", dst)
+            PY
+          fi
+
+          if [ -f "model.h5" ]; then
+            python - <<'PY'
+            import os, tensorflow as tf, tensorflowjs as tfjs
+            model = tf.keras.models.load_model("model.h5")
+            dst = "public/web_model/keras_h5"
+            os.makedirs(dst, exist_ok=True)
+            tfjs.converters.save_keras_model(model, dst)
+            print("✅ Converted Keras H5 →", dst)
+            PY
+          fi
+
+          if ls *.keras >/dev/null 2>&1; then
+            python - <<'PY'
+            import os, glob, tensorflow as tf, tensorflowjs as tfjs
+            f = glob.glob("*.keras")[0]
+            model = tf.keras.models.load_model(f)
+            dst = "public/web_model/keras"
+            os.makedirs(dst, exist_ok=True)
+            tfjs.converters.save_keras_model(model, dst)
+            print("✅ Converted Keras .keras →", dst)
+            PY
+          fi
+
+          echo "ℹ️ Если моделей нет — шаг конвертации просто пропущен."
+
+      - name: Upload web model artifact (if any)
+        uses: actions/upload-artifact@v4
+        with:
+          name: web_model
+          path: public/web_model
+          if-no-files-found: warn
