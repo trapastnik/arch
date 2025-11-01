@@ -28,14 +28,14 @@ jobs:
         with:
             python-version: '3.10'
 
-      - name: Install deps (pinned & no-deps tfjs)
+            - name: Install deps (pinned, no JAX, совместимо с TF 2.13)
         env:
           PIP_DISABLE_PIP_VERSION_CHECK: "1"
         run: |
           set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
 
-          # пины под TF 2.13.x
+          # Базовые пины под TF 2.13.x
           pip install \
             "numpy==1.24.3" \
             "h5py==3.10.0" \
@@ -43,23 +43,29 @@ jobs:
             "packaging==23.2" \
             "typing_extensions==4.5.0"
 
-          # TensorFlow CPU
+          # Сам TensorFlow (CPU) 2.13.1
           pip install "tensorflow-cpu==2.13.1"
 
-          # >>> ВАЖНО: TF-Decision-Forests, нужен tfjs для импорта
-          pip install "tensorflow-decision-forests==1.9.0"
+          # TensorFlow Decision Forests — версия, совместимая с TF 2.13
+          # (если pip попытается притащить другой TF — жёстко поставим без зависимостей)
+          pip install "tensorflow-decision-forests==1.4.0" || pip install --no-deps "tensorflow-decision-forests==1.4.0"
 
-          # tensorflowjs ставим без зависимостей (чтобы не перетянул другой TF/JAX)
+          # TF Hub нужен tfjs-конвертеру при импорте
+          pip install --no-deps "tensorflow-hub==0.12.0"
+
+          # Сам tfjs-конвертер без его зависимостей (чтобы не перетянул другие TF/JAX)
           pip install --no-deps "tensorflowjs==4.11.0"
 
+          # Быстрый smoke-test импортов
           python - <<'PY'
-          import tensorflow as tf, tensorflowjs
+          import tensorflow as tf
+          import tensorflowjs
           import tensorflow_decision_forests as tfdf
-          import numpy, h5py, packaging, typing_extensions, protobuf
+          import tensorflow_hub as hub
           print("TF:", tf.__version__)
           print("TFJS:", tensorflowjs.__version__)
           print("TF-DF:", tfdf.__version__)
-          print("numpy:", numpy.__version__)
+          print("TF-Hub:", hub.__version__)
           PY
 
       - name: Convert Keras -> TFJS
