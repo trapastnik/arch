@@ -36,6 +36,7 @@ jobs:
           set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
 
+          # Базовые совместимые пины
           pip install \
             "numpy==1.23.5" \
             "h5py==3.10.0" \
@@ -48,20 +49,28 @@ jobs:
             "tensorflow-estimator==2.12.0" \
             "tensorboard==2.12.3"
 
+          # Зависимости, которые требуют конвертеры
           pip install "pandas==2.0.3" "wurlitzer==3.1.1"
 
+          # Очистим возможные остатки
           pip uninstall -y tensorflowjs jax jaxlib || true
 
           python - <<'PY'
           import numpy, tensorflow as tf, pandas
-          print(f"✅ Base OK | NumPy: {numpy.__version__} | TF: {tf.__version__} | pandas: {pandas.__version__}")
+          print(f"✅ Base OK  | NumPy: {numpy.__version__} | TF: {tf.__version__} | pandas: {pandas.__version__}")
           PY
 
-      - name: Install TensorFlow.js CLI (safe)
+      - name: Install TensorFlow.js toolchain (safe pins)
         run: |
           set -euxo pipefail
+          # TFJS 4.8.0 тянет конвертер, который импортирует tensorflow_decision_forests.
+          # Ставим совместимую версию под TF 2.12.
+          pip install --no-deps "tensorflow-decision-forests==1.4.0"
+
+          # Сам tfjs CLI (без автоподтягивания свежих конфликтных deps)
           pip install --no-deps "tensorflowjs==4.8.0"
 
+          # Быстрая проверка импортов
           python - <<'PY'
           import numpy as np, tensorflow as tf
           import tensorflowjs as tfjs
@@ -107,7 +116,7 @@ jobs:
             PY
           fi
 
-          echo "ℹ️ Если моделей нет — шаг конвертации просто пропущен."
+          echo "ℹ️ Модели не найдены — шаг конвертации пропущен."
 
       - name: Upload web model artifact (if any)
         uses: actions/upload-artifact@v4
