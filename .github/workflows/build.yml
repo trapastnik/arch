@@ -18,7 +18,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Python
@@ -26,22 +26,32 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install deps (TFJS stack)
+      - name: Install dependencies (TensorFlow + TFJS stack)
         env:
           PIP_DISABLE_PIP_VERSION_CHECK: '1'
         run: |
           set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
+
+          # Совместимые версии библиотек
           pip install \
-            numpy==1.24.3 \
+            numpy==1.23.5 \
             h5py==3.10.0 \
             packaging==23.2 \
             typing_extensions==4.5.0 \
-            protobuf==3.20.3 \
+            protobuf==3.20.3
+
+          # TensorFlow стек
+          pip install \
             tensorflow-cpu==2.12.0 \
             tensorflow-estimator==2.12.0 \
             tensorboard==2.12.3
-          pip install --no-deps tensorflow-hub==0.12.0 tensorflow-decision-forests==1.4.0 tensorflowjs==4.11.0
+
+          # Модули, нужные TFJS
+          pip install --no-deps \
+            tensorflow-hub==0.12.0 \
+            tensorflow-decision-forests==1.4.0 \
+            tensorflowjs==4.11.0
 
       - name: Convert Keras -> TFJS
         env:
@@ -51,8 +61,21 @@ jobs:
           mkdir -p public/web_model
           python - <<'PY'
           import os, shutil, tensorflow as tf, tensorflowjs as tfjs
-          model = tf.keras.models.load_model("model_final.keras", compile=False, safe_mode=False)
+
+          print("✅ TensorFlow:", tf.__version__)
+          print("✅ TensorFlow.js:", tfjs.__version__)
+
+          model_path = "model_final.keras"
+          if not os.path.exists(model_path):
+              raise FileNotFoundError(f"{model_path} not found")
+
+          print("🔄 Loading model...")
+          model = tf.keras.models.load_model(model_path, compile=False, safe_mode=False)
+
+          print("💾 Converting to TFJS format...")
           tfjs.converters.save_keras_model(model, "public/web_model")
+
+          print("📦 Copying static files...")
           os.makedirs("public", exist_ok=True)
           for fname in ("index.html", "class_mapping.json"):
               if os.path.exists(fname):
