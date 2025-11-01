@@ -1,9 +1,8 @@
-name: build-and-deploy
+name: Build & Deploy TFJS model
 
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,88 +10,67 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: pages
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
-      # забираем код
         uses: actions/checkout@v4
 
       - name: Setup Python 3.10
         uses: actions/setup-python@v5
         with:
-            python-version: '3.10'
+          python-version: '3.10'
 
-            - name: Install deps (pinned, no JAX, совместимо с TF 2.13)
+      - name: Install deps (TF 2.13 stack, без JAX)
         env:
           PIP_DISABLE_PIP_VERSION_CHECK: "1"
         run: |
           set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
-
-          # Базовые пины под TF 2.13.x
           pip install \
             "numpy==1.24.3" \
             "h5py==3.10.0" \
             "protobuf==4.23.4" \
             "packaging==23.2" \
             "typing_extensions==4.5.0"
-
-          # Сам TensorFlow (CPU) 2.13.1
           pip install "tensorflow-cpu==2.13.1"
-
-          # TensorFlow Decision Forests — версия, совместимая с TF 2.13
-          # (если pip попытается притащить другой TF — жёстко поставим без зависимостей)
           pip install "tensorflow-decision-forests==1.4.0" || pip install --no-deps "tensorflow-decision-forests==1.4.0"
-
-          # TF Hub нужен tfjs-конвертеру при импорте
           pip install --no-deps "tensorflow-hub==0.12.0"
-
-          # Сам tfjs-конвертер без его зависимостей (чтобы не перетянул другие TF/JAX)
           pip install --no-deps "tensorflowjs==4.11.0"
 
-          # Быстрый smoke-test импортов
+          # быстрая проверка импортов
           python - <<'PY'
           import tensorflow as tf
-          import tensorflowjs
-          import tensorflow_decision_forests as tfdf
-          import tensorflow_hub as hub
-          print("TF:", tf.__version__)
-          print("TFJS:", tensorflowjs.__version__)
-          print("TF-DF:", tfdf.__version__)
-          print("TF-Hub:", hub.__version__)
+          import tensorflowjs, tensorflow_decision_forests as tfdf, tensorflow_hub as hub
+          print("TF", tf.__version__, "TFJS", tensorflowjs.__version__, "TF-DF", tfdf.__version__, "TF-Hub", hub.__version__)
           PY
 
       - name: Convert Keras -> TFJS
         run: |
           set -euxo pipefail
+          mkdir -p public/web_model
           python - <<'PY'
-          import os, tensorflow as tf
-          from tensorflowjs.converters import save_keras_model
-          m = tf.keras.models.load_model("model_final.keras", compile=False, safe_mode=False)
-          os.makedirs("web_model", exist_ok=True)
-          save_keras_model(m, "web_model")
-          print("web_model files:", os.listdir("web_model"))
+          import tensorflow as tf, tensorflowjs as tfjs, os, json, shutil
+          # Загрузить Keras-модель
+          model = tf.keras.models.load_model("model_final.keras", compile=False, safe_mode=False)
+          # Сохранить в формате TFJS
+          tfjs.converters.save_keras_model(model, "public/web_model")
+          # Перенести статику
+          os.makedirs("public", exist_ok=True)
+          for fname in ("index.html", "class_mapping.json"):
+            if os.path.exists(fname):
+              shutil.copy(fname, os.path.join("public", fname))
           PY
+          ls -lah public/web_model
 
-      - name: Prepare site/
-        run: |
-          set -euxo pipefail
-          mkdir -p site
-          cp index.html site/
-          cp class_mapping.json site/
-          mkdir -p site/web_model
-          cp -r web_model/* site/web_model/
-
-      - name: Upload artifact
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: ./public
 
   deploy:
     needs: build
@@ -101,6 +79,5 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
+      - id: deployment
         uses: actions/deploy-pages@v4
