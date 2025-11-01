@@ -28,12 +28,12 @@ jobs:
           python -V
           pip -V
 
-      - name: Install pinned base (TensorFlow 2.12.x + NumPy<2)
+      - name: Install pinned base (TF 2.12 + NumPy<2)
         run: |
           set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
 
-          # Критичные пины для совместимости с TF 2.12 и старыми бинарями
+          # Критично фиксируем бинари под TF 2.12
           pip install \
             "numpy==1.23.5" \
             "h5py==3.10.0" \
@@ -41,84 +41,77 @@ jobs:
             "packaging==23.2" \
             "typing_extensions==4.5.0"
 
-          # Сам TF и дружественные пакеты на совместимых версиях
           pip install \
             "tensorflow-cpu==2.12.0" \
             "tensorflow-estimator==2.12.0" \
             "tensorboard==2.12.3"
 
-          # То, что иногда требует tfdf и пайплайн
           pip install \
             "pandas==2.0.3" \
             "wurlitzer==3.1.1"
 
-          # Полезные аддоны без автоподтягивания конфликтующих зависимостей
-          pip install --no-deps "tensorflow-hub==0.12.0" "tensorflow-decision-forests==1.4.0"
+          # tfdf совместимой версии, без автозависимостей
+          pip install --no-deps "tensorflow-decision-forests==1.4.0"
+          pip install --no-deps "tensorflow-hub==0.12.0"
 
           python - <<'PY'
-          import numpy, tensorflow as tf
-          print("✅ Base OK  | NumPy:", numpy.__version__, "| TF:", tf.__version__)
+          import numpy, tensorflow as tf, pandas
+          print(f"✅ Base OK  | NumPy: {numpy.__version__} | TF: {tf.__version__} | pandas: {pandas.__version__}")
           PY
 
-      - name: Try TFJS Strategy A (4.11.0 + JAX pinned) → else Strategy B (4.10.0) → else Strategy C (4.8.0 no-JAX)
+      - name: TFJS strategies (A → B → C)
         run: |
           set -euxo pipefail
+          rm -f /tmp/strategy_a_failed /tmp/strategy_b_failed
 
-          # Чистим на всякий случай
+          # Чистим возможные следы
           pip uninstall -y tensorflowjs jax jaxlib || true
 
           echo "=== Strategy A: TFJS 4.11.0 + JAX 0.4.26 + SciPy 1.11.4, при этом NumPy остаётся 1.23.5 ==="
-          # Важно: не даём pipу утащить NumPy в 2.x — версии ниже совместимы и удовлетворяют jax
-          pip install --upgrade --force-reinstall \
-            "scipy==1.11.4" \
-            "jax==0.4.26" "jaxlib==0.4.26"
+          # Важно: НЕ трогаем NumPy. SciPy берём 1.11.4, он совместим с NumPy 1.23.5.
+          pip install --upgrade --force-reinstall "scipy==1.11.4"
+          pip install "jax==0.4.26" "jaxlib==0.4.26"
+          # TFJS без зависимостей — чтобы не апгрейдил TF/Keras/protobuf и tfdf
+          pip install --no-deps "tensorflowjs==4.11.0"
 
-          # Сначала TFJS 4.11.0 (с jax-конвертером)
-          pip install "tensorflowjs==4.11.0" || true
-
-          # Проверка Strategy A
           python - <<'PY' || (echo "Strategy A failed" && touch /tmp/strategy_a_failed)
-          import numpy as np
-          from jax.experimental import jax2tf  # noqa: F401
+          import numpy as np, tensorflow as tf
           import tensorflowjs as tfjs
-          import tensorflow as tf
-          print("NumPy:", np.__version__, "| TF:", tf.__version__, "| TFJS:", tfjs.__version__)
-          # быстрый smoke тест TF
-          a,b = tf.constant([1.0]), tf.constant([2.0]); _ = a + b
-          print("✅ Strategy A imports OK")
+          # jax shape_poly существует в 0.4.26
+          from jax.experimental import jax2tf  # noqa: F401
+          a,b=tf.constant([1.]),tf.constant([2.]);_=a+b
+          print("✅ Strategy A imports OK:",
+                "NumPy",np.__version__,"TF",tf.__version__,"TFJS",tfjs.__version__)
           PY
 
           if [ -f /tmp/strategy_a_failed ]; then
-            echo "=== Strategy B: TFJS 4.10.0 + JAX (на тот же пин) ==="
+            echo "=== Strategy B: TFJS 4.10.0 + JAX 0.4.26 ==="
             pip uninstall -y tensorflowjs || true
-            pip install "tensorflowjs==4.10.0" || true
+            pip install --no-deps "tensorflowjs==4.10.0"
 
             python - <<'PY' || (echo "Strategy B failed" && touch /tmp/strategy_b_failed)
-            import numpy as np
-            from jax.experimental import jax2tf  # noqa: F401
+            import numpy as np, tensorflow as tf
             import tensorflowjs as tfjs
-            import tensorflow as tf
-            print("NumPy:", np.__version__, "| TF:", tf.__version__, "| TFJS:", tfjs.__version__)
-            a,b = tf.constant([1.0]), tf.constant([2.0]); _ = a + b
-            print("✅ Strategy B imports OK")
+            from jax.experimental import jax2tf  # noqa: F401
+            a,b=tf.constant([1.]),tf.constant([2.]);_=a+b
+            print("✅ Strategy B imports OK:",
+                  "NumPy",np.__version__,"TF",tf.__version__,"TFJS",tfjs.__version__)
             PY
           fi
 
           if [ -f /tmp/strategy_a_failed ] && [ -f /tmp/strategy_b_failed ]; then
-            echo "=== Strategy C: TFJS 4.8.0 БЕЗ JAX-конвертера (надёжный фоллбек) ==="
+            echo "=== Strategy C: TFJS 4.8.0 (без JAX) ==="
             pip uninstall -y tensorflowjs jax jaxlib || true
             pip install --no-deps "tensorflowjs==4.8.0"
-
-            # На всякий случай закрепим NumPy<2 обратно
+            # На всякий случай убеждаемся, что NumPy остался <2
             pip install --upgrade --force-reinstall "numpy==1.23.5"
 
             python - <<'PY'
-            import numpy as np
+            import numpy as np, tensorflow as tf
             import tensorflowjs as tfjs
-            import tensorflow as tf
-            print("NumPy:", np.__version__, "| TF:", tf.__version__, "| TFJS:", tfjs.__version__)
-            a,b = tf.constant([1.0]), tf.constant([2.0]); _ = a + b
-            print("✅ Strategy C imports OK")
+            a,b=tf.constant([1.]),tf.constant([2.]);_=a+b
+            print("✅ Strategy C imports OK:",
+                  "NumPy",np.__version__,"TF",tf.__version__,"TFJS",tfjs.__version__)
             PY
           fi
 
@@ -127,51 +120,43 @@ jobs:
           set -euxo pipefail
           mkdir -p public/web_model
 
-          # Если есть SavedModel:
+          # SavedModel → TFJS
           if [ -d "saved_model" ]; then
             python - <<'PY'
-            import tensorflow as tf, tensorflowjs as tfjs
-            import os
-            src = "saved_model"
-            dst = "public/web_model/savedmodel"
+            import os, tensorflowjs as tfjs
+            src="saved_model"; dst="public/web_model/savedmodel"
             os.makedirs(dst, exist_ok=True)
             tfjs.converters.convert_tf_saved_model(src, dst)
             print("✅ Converted SavedModel →", dst)
             PY
           fi
 
-          # Если есть Keras H5:
+          # Keras H5 → TFJS
           if [ -f "model.h5" ]; then
             python - <<'PY'
-            import tensorflow as tf, tensorflowjs as tfjs
-            import os
-            model = tf.keras.models.load_model("model.h5")
-            dst = "public/web_model/keras_h5"
+            import os, tensorflow as tf, tensorflowjs as tfjs
+            model=tf.keras.models.load_model("model.h5")
+            dst="public/web_model/keras_h5"
             os.makedirs(dst, exist_ok=True)
             tfjs.converters.save_keras_model(model, dst)
             print("✅ Converted Keras H5 →", dst)
             PY
           fi
 
-          # Если есть Keras SavedModel (.keras):
+          # Keras .keras → TFJS
           if ls *.keras >/dev/null 2>&1; then
-            F=$(ls *.keras | head -n1)
             python - <<'PY'
-            import tensorflow as tf, tensorflowjs as tfjs
-            import glob, os
-            keras_files = glob.glob("*.keras")
-            if not keras_files:
-              raise SystemExit(0)
-            f = keras_files[0]
-            model = tf.keras.models.load_model(f)
-            dst = "public/web_model/keras"
+            import os, glob, tensorflow as tf, tensorflowjs as tfjs
+            f=glob.glob("*.keras")[0]
+            model=tf.keras.models.load_model(f)
+            dst="public/web_model/keras"
             os.makedirs(dst, exist_ok=True)
             tfjs.converters.save_keras_model(model, dst)
             print("✅ Converted Keras .keras →", dst)
             PY
           fi
 
-          echo "ℹ️ Если моделей нет — конвертация пропущена (это нормально). Окружение настроено."
+          echo "ℹ️ Если моделей нет — шаг конвертации пропущен."
 
       - name: Upload web model artifact (if any)
         uses: actions/upload-artifact@v4
