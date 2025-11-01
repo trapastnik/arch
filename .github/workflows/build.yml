@@ -1,8 +1,9 @@
-name: Build & Deploy TFJS model
+name: Build and Deploy
 
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -20,70 +21,48 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python 3.10
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-            - name: Install deps (совместимые версии для TFJS)
+      - name: Install deps (TFJS stack)
         env:
-          PIP_DISABLE_PIP_VERSION_CHECK: "1"
+          PIP_DISABLE_PIP_VERSION_CHECK: '1'
         run: |
           set -euxo pipefail
-
-          # Базовые колёса
           python -m pip install --upgrade pip setuptools wheel
           pip install \
-            "numpy==1.24.3" \
-            "h5py==3.10.0" \
-            "packaging==23.2" \
-            "typing_extensions==4.5.0"
-
-          # Стек TensorFlow строго 2.12.x (под TF-DF 1.4.0)
-          pip install "protobuf==3.20.3"        # <-- ключевое: понижаем protobuf
-          pip install "tensorflow-cpu==2.12.0"
-          pip install "tensorflow-estimator==2.12.0" "tensorboard==2.12.3"
-
-          # Модули, которые tfjs импортит на старте
-          pip install --no-deps "tensorflow-hub==0.12.0"
-          pip install --no-deps "tensorflow-decision-forests==1.4.0"
-
-          # Сам конвертер
-          pip install --no-deps "tensorflowjs==4.11.0"
-
-          # Быстрая проверка импортов
-          python - <<'PY'
-          import tensorflow as tf
-          import tensorflowjs, tensorflow_hub as hub, tensorflow_decision_forests as tfdf, google.protobuf as gp
-          print("TF", tf.__version__, "| TFJS", tensorflowjs.__version__,
-                "| Hub", hub.__version__, "| TF-DF", tfdf.__version__)
-          import google.protobuf
-          import pkg_resources
-          print("protobuf", pkg_resources.get_distribution("protobuf").version)
-          PY
+            numpy==1.24.3 \
+            h5py==3.10.0 \
+            packaging==23.2 \
+            typing_extensions==4.5.0 \
+            protobuf==3.20.3 \
+            tensorflow-cpu==2.12.0 \
+            tensorflow-estimator==2.12.0 \
+            tensorboard==2.12.3
+          pip install --no-deps tensorflow-hub==0.12.0 tensorflow-decision-forests==1.4.0 tensorflowjs==4.11.0
 
       - name: Convert Keras -> TFJS
+        env:
+          PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
         run: |
           set -euxo pipefail
           mkdir -p public/web_model
           python - <<'PY'
-          import tensorflow as tf, tensorflowjs as tfjs, os, json, shutil
-          # Загрузить Keras-модель
+          import os, shutil, tensorflow as tf, tensorflowjs as tfjs
           model = tf.keras.models.load_model("model_final.keras", compile=False, safe_mode=False)
-          # Сохранить в формате TFJS
           tfjs.converters.save_keras_model(model, "public/web_model")
-          # Перенести статику
           os.makedirs("public", exist_ok=True)
           for fname in ("index.html", "class_mapping.json"):
-            if os.path.exists(fname):
-              shutil.copy(fname, os.path.join("public", fname))
+              if os.path.exists(fname):
+                  shutil.copy(fname, os.path.join("public", fname))
           PY
-          ls -lah public/web_model
 
-      - name: Upload Pages artifact
+      - name: Upload static site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./public
+          path: public
 
   deploy:
     needs: build
@@ -91,6 +70,10 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
     steps:
-      - id: deployment
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
