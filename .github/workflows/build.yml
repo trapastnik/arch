@@ -15,35 +15,65 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Ставим совместимые версии без JAX-конфликтов
+      # Проверим, что модель и html на месте
+      - name: List repo
+        run: |
+          pwd
+          ls -lah
+          ls -lah .github/workflows || true
+
+      # Python + устойчивые версии библиотек
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - run: |
-          python -m pip install --upgrade pip
-          pip install "tensorflow==2.13.1" "tensorflowjs==3.21.0" h5py
 
-      # Конвертируем твою Keras-модель -> TFJS (получим site/web_model/model.json + *.bin)
+      - name: Install deps (CPU TF, фикс зависимостей)
+        run: |
+          python -m pip install --upgrade pip
+          # numpy<2 — чтобы TF 2.13 не конфликтовал
+          pip install "numpy<2" "h5py<3.11"
+          # Ставим CPU-версию TF (на GitHub Actions этого достаточно для конвертации)
+          pip install "tensorflow-cpu==2.13.1"
+          # Cтабильный tfjs-конвертер без JAX
+          pip install "tensorflowjs==3.21.0"
+          python - <<'PY'
+          import tensorflow as tf, tensorflowjs, numpy, h5py, sys
+          print("PY:", sys.version)
+          print("TF:", tf.__version__)
+          print("TFJS:", tensorflowjs.__version__)
+          import numpy as np, h5py as _h5
+          print("numpy:", np.__version__)
+          print("h5py:", _h5.__version__)
+          PY
+
       - name: Convert Keras -> TFJS
         run: |
           python - <<'PY'
           import os, tensorflow as tf, tensorflowjs as tfjs
           src = "model_final.keras"  # если у тебя best_model.h5 — замени имя тут
           out = "site/web_model"
+          if not os.path.exists(src):
+              raise FileNotFoundError(f"Не найден файл {src} (проверь, он точно в корне репозитория?)")
           os.makedirs(out, exist_ok=True)
+          print("Loading model:", src)
           m = tf.keras.models.load_model(src, compile=False)
+          print("Saving TFJS to:", out)
           tfjs.converters.save_keras_model(m, out)
-          print("OK ->", out)
+          print("Done. Files:", os.listdir(out))
           PY
+          ls -lah site/web_model
 
-      # Складываем сайт
       - name: Assemble site
         run: |
-          mkdir -p site
+          test -f index.html
+          test -f class_mapping.json
           cp index.html site/
           cp class_mapping.json site/
+          echo "Site content:"
+          find site -maxdepth 2 -type f -ls
 
-      # Готовим артефакт для Pages
+      # GitHub Pages
+      - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
