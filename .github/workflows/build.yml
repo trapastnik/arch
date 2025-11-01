@@ -31,47 +31,41 @@ jobs:
           python -V
           pip -V
 
-      - name: Install pinned base (TF 2.12 + NumPy 1.23.5)
+      - name: Install base (TF 2.12 + NumPy 1.23.5)
         run: |
           set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
 
           pip install \
-            "numpy==1.23.5" \
-            "h5py==3.10.0" \
-            "protobuf==3.20.3" \
-            "packaging==23.2" \
-            "typing_extensions==4.5.0"
+            numpy==1.23.5 \
+            h5py==3.10.0 \
+            protobuf==3.20.3 \
+            packaging==23.2 \
+            typing_extensions==4.5.0
 
           pip install \
-            "tensorflow-cpu==2.12.0" \
-            "tensorflow-estimator==2.12.0" \
-            "tensorboard==2.12.3"
+            tensorflow-cpu==2.12.0 \
+            tensorflow-estimator==2.12.0 \
+            tensorboard==2.12.3
 
-          pip install \
-            "pandas==2.0.3" \
-            "wurlitzer==3.1.1"
-
-          pip uninstall -y tensorflowjs jax jaxlib || true
+          pip install pandas==2.0.3
 
           python - <<'PY'
           import numpy as np, tensorflow as tf, pandas as pd
           print("✅ Base OK | NumPy:", np.__version__, "| TF:", tf.__version__, "| pandas:", pd.__version__)
           PY
 
-      - name: Install TFJS toolchain (safe)
+      - name: Install TFJS only
         run: |
           set -euxo pipefail
-          pip install --no-deps "tensorflow-decision-forests==1.4.0"
-          pip install --no-deps "tensorflow-hub==0.12.0"
-          pip install --no-deps "tensorflowjs==4.8.0"
+          # Устанавливаем только tensorflowjs, без JAX / TFDF
+          pip install --no-deps tensorflowjs==4.8.0
 
           python - <<'PY'
-          import numpy as np, tensorflow as tf, pandas as pd
+          import numpy as np, tensorflow as tf
           import tensorflowjs as tfjs
-          # Quick smoke test
           a, b = tf.constant([1.]), tf.constant([2.]); _ = a + b
-          print("✅ TFJS import OK | NumPy", np.__version__, "| TF", tf.__version__, "| TFJS", tfjs.__version__, "| pandas", pd.__version__)
+          print("✅ TFJS import OK | NumPy", np.__version__, "| TF", tf.__version__, "| TFJS", tfjs.__version__)
           PY
 
       - name: Convert model to TFJS (if present)
@@ -91,7 +85,7 @@ jobs:
 
           if [ -f "model.h5" ]; then
             python - <<'PY'
-            import os, tensorflow as tf, tensorflowjs as tfjs
+            import tensorflow as tf, tensorflowjs as tfjs, os
             model = tf.keras.models.load_model("model.h5")
             dst = "public/web_model/keras_h5"
             os.makedirs(dst, exist_ok=True)
@@ -102,7 +96,7 @@ jobs:
 
           if ls *.keras >/dev/null 2>&1; then
             python - <<'PY'
-            import os, glob, tensorflow as tf, tensorflowjs as tfjs
+            import glob, tensorflow as tf, tensorflowjs as tfjs, os
             f = glob.glob("*.keras")[0]
             model = tf.keras.models.load_model(f)
             dst = "public/web_model/keras"
@@ -114,7 +108,7 @@ jobs:
 
           echo "ℹ️ Если моделей нет — шаг конвертации пропущен."
 
-      - name: Upload web model artifact (if any)
+      - name: Upload web_model artifact (if any)
         uses: actions/upload-artifact@v4
         with:
           name: web_model
