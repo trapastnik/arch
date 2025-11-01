@@ -33,7 +33,7 @@ jobs:
           set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
 
-          # Совместимые версии библиотек
+          # Базовые pin'ы под TF 2.12
           pip install \
             numpy==1.23.5 \
             h5py==3.10.0 \
@@ -47,7 +47,10 @@ jobs:
             tensorflow-estimator==2.12.0 \
             tensorboard==2.12.3
 
-          # Модули, нужные TFJS
+          # ВАЖНО: pandas нужен для tensorflow_decision_forests (его требует tensorflowjs)
+          pip install pandas==2.2.2
+
+          # Библиотеки, нужные TFJS (без автоподтягивания зависимостей)
           pip install --no-deps \
             tensorflow-hub==0.12.0 \
             tensorflow-decision-forests==1.4.0 \
@@ -55,6 +58,7 @@ jobs:
 
       - name: Convert Keras -> TFJS
         env:
+          # Безопасный режим парсинга protobuf в питоне
           PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
         run: |
           set -euxo pipefail
