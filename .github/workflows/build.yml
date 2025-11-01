@@ -26,20 +26,21 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install dependencies (TensorFlow + TFJS stack)
+      - name: Install dependencies (TensorFlow + TFJS)
         env:
           PIP_DISABLE_PIP_VERSION_CHECK: '1'
         run: |
           set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
 
-          # 🔹 Базовые зависимости под TensorFlow 2.12
+          # 🔹 Базовые зависимости под TF 2.12
           pip install \
             numpy==1.23.5 \
             h5py==3.10.0 \
             packaging==23.2 \
             typing_extensions==4.5.0 \
-            protobuf==3.20.3
+            protobuf==3.20.3 \
+            pandas==2.2.2
 
           # 🔹 TensorFlow стек
           pip install \
@@ -47,17 +48,25 @@ jobs:
             tensorflow-estimator==2.12.0 \
             tensorboard==2.12.3
 
-          # 🔹 pandas нужен для tensorflow_decision_forests
-          pip install pandas==2.2.2
+          # 🔹 Опция 1: пробуем jax 0.4.26 + tfjs 4.11.0
+          echo "=== Trying Option 1: tensorflowjs 4.11.0 + jax 0.4.26 ==="
+          pip uninstall -y jax jaxlib tensorflowjs || true
+          pip install --no-cache-dir --upgrade --force-reinstall \
+            "jax==0.4.26" "jaxlib==0.4.26"
+          pip install --no-deps tensorflow-hub==0.12.0 tensorflow-decision-forests==1.4.0 tensorflowjs==4.11.0 || true
 
-          # 🔹 JAX фикс (исправляет ImportError: shape_poly)
-          pip install jax==0.4.26 jaxlib==0.4.26
+          echo "=== Testing TFJS import ==="
+          python - <<'PY' || touch /tmp/tfjs_fail
+          import tensorflowjs, jax
+          from jax.experimental import jax2tf
+          print("✅ Option 1 OK: tfjs", tensorflowjs.__version__)
+          PY
 
-          # 🔹 TensorFlow.js + доп. пакеты
-          pip install --no-deps \
-            tensorflow-hub==0.12.0 \
-            tensorflow-decision-forests==1.4.0 \
-            tensorflowjs==4.11.0
+          if [ -f /tmp/tfjs_fail ]; then
+            echo "=== Option 1 failed, trying Option 2: tensorflowjs 4.10.0 (без JAX) ==="
+            pip uninstall -y tensorflowjs jax jaxlib || true
+            pip install --no-deps tensorflow-hub==0.12.0 tensorflow-decision-forests==1.4.0 tensorflowjs==4.10.0
+          fi
 
       - name: Convert Keras -> TFJS
         env:
@@ -67,21 +76,15 @@ jobs:
           mkdir -p public/web_model
           python - <<'PY'
           import os, shutil, tensorflow as tf, tensorflowjs as tfjs
-
-          print("✅ TensorFlow:", tf.__version__)
-          print("✅ TensorFlow.js:", tfjs.__version__)
+          print("TF:", tf.__version__, "TFJS:", tfjs.__version__)
 
           model_path = "model_final.keras"
           if not os.path.exists(model_path):
               raise FileNotFoundError(f"{model_path} not found")
 
-          print("🔄 Loading model...")
           model = tf.keras.models.load_model(model_path, compile=False, safe_mode=False)
-
-          print("💾 Converting to TFJS format...")
           tfjs.converters.save_keras_model(model, "public/web_model")
 
-          print("📦 Copying static files...")
           os.makedirs("public", exist_ok=True)
           for fname in ("index.html", "class_mapping.json"):
               if os.path.exists(fname):
