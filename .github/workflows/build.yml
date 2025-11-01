@@ -25,28 +25,41 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install deps (TF 2.13 stack, без JAX)
+            - name: Install deps (совместимые версии для TFJS)
         env:
           PIP_DISABLE_PIP_VERSION_CHECK: "1"
         run: |
           set -euxo pipefail
+
+          # Базовые колёса
           python -m pip install --upgrade pip setuptools wheel
           pip install \
             "numpy==1.24.3" \
             "h5py==3.10.0" \
-            "protobuf==4.23.4" \
             "packaging==23.2" \
             "typing_extensions==4.5.0"
-          pip install "tensorflow-cpu==2.13.1"
-          pip install "tensorflow-decision-forests==1.4.0" || pip install --no-deps "tensorflow-decision-forests==1.4.0"
+
+          # Стек TensorFlow строго 2.12.x (под TF-DF 1.4.0)
+          pip install "protobuf==3.20.3"        # <-- ключевое: понижаем protobuf
+          pip install "tensorflow-cpu==2.12.0"
+          pip install "tensorflow-estimator==2.12.0" "tensorboard==2.12.3"
+
+          # Модули, которые tfjs импортит на старте
           pip install --no-deps "tensorflow-hub==0.12.0"
+          pip install --no-deps "tensorflow-decision-forests==1.4.0"
+
+          # Сам конвертер
           pip install --no-deps "tensorflowjs==4.11.0"
 
-          # быстрая проверка импортов
+          # Быстрая проверка импортов
           python - <<'PY'
           import tensorflow as tf
-          import tensorflowjs, tensorflow_decision_forests as tfdf, tensorflow_hub as hub
-          print("TF", tf.__version__, "TFJS", tensorflowjs.__version__, "TF-DF", tfdf.__version__, "TF-Hub", hub.__version__)
+          import tensorflowjs, tensorflow_hub as hub, tensorflow_decision_forests as tfdf, google.protobuf as gp
+          print("TF", tf.__version__, "| TFJS", tensorflowjs.__version__,
+                "| Hub", hub.__version__, "| TF-DF", tfdf.__version__)
+          import google.protobuf
+          import pkg_resources
+          print("protobuf", pkg_resources.get_distribution("protobuf").version)
           PY
 
       - name: Convert Keras -> TFJS
