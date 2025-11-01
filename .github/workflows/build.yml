@@ -34,7 +34,8 @@ jobs:
         run: |
           set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
-          # пины совместимы с TF 2.13.x
+
+          # пины под TF 2.13.x
           pip install \
             "numpy==1.24.3" \
             "h5py==3.10.0" \
@@ -42,18 +43,23 @@ jobs:
             "packaging==23.2" \
             "typing_extensions==4.5.0"
 
-          # сам TensorFlow (CPU)
+          # TensorFlow CPU
           pip install "tensorflow-cpu==2.13.1"
 
-          # tensorflowjs ставим БЕЗ зависимостей, чтобы не стянул старый TF/JAX
+          # >>> ВАЖНО: TF-Decision-Forests, нужен tfjs для импорта
+          pip install "tensorflow-decision-forests==1.9.0"
+
+          # tensorflowjs ставим без зависимостей (чтобы не перетянул другой TF/JAX)
           pip install --no-deps "tensorflowjs==4.11.0"
 
           python - <<'PY'
-          import tensorflow as tf, tensorflowjs, numpy, h5py
+          import tensorflow as tf, tensorflowjs
+          import tensorflow_decision_forests as tfdf
+          import numpy, h5py, packaging, typing_extensions, protobuf
           print("TF:", tf.__version__)
           print("TFJS:", tensorflowjs.__version__)
+          print("TF-DF:", tfdf.__version__)
           print("numpy:", numpy.__version__)
-          print("h5py:", h5py.__version__)
           PY
 
       - name: Convert Keras -> TFJS
