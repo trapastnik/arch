@@ -2,113 +2,58 @@ name: build
 
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
   pull_request:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      PIP_DISABLE_PIP_VERSION_CHECK: "1"
-      PIP_NO_PYTHON_VERSION_WARNING: "1"
-      PYTHONUNBUFFERED: "1"
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      # Получаем исходный код
+      - uses: actions/checkout@v4
 
-      - name: Setup Python 3.10
+      # Настраиваем Python 3.10 и устанавливаем фиксированные зависимости для обучения и теста
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      - name: Show env
+      - name: Install Python dependencies
         run: |
-          set -euxo pipefail
-          python -V
-          pip -V
-
-      - name: Install base (TF 2.12 + NumPy 1.23.5)
-        run: |
-          set -euxo pipefail
           python -m pip install --upgrade pip setuptools wheel
+          pip install numpy==1.23.5 pandas==2.0.3 tensorflow-cpu==2.12.0
 
-          pip install \
-            numpy==1.23.5 \
-            h5py==3.10.0 \
-            protobuf==3.20.3 \
-            packaging==23.2 \
-            typing_extensions==4.5.0
+      # Настраиваем Node.js
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
 
-          pip install \
-            tensorflow-cpu==2.12.0 \
-            tensorflow-estimator==2.12.0 \
-            tensorboard==2.12.3
-
-          pip install pandas==2.0.3
-
-          python - <<'PY'
-          import numpy as np, tensorflow as tf, pandas as pd
-          print("✅ Base OK | NumPy:", np.__version__, "| TF:", tf.__version__, "| pandas:", pd.__version__)
-          PY
-
-      - name: Install TFJS only
+      # Устанавливаем глобально CLI tfjs-converter
+      - name: Install TensorFlow.js converter
         run: |
-          set -euxo pipefail
-          # Устанавливаем только tensorflowjs, без JAX / TFDF
-          pip install --no-deps tensorflowjs==4.8.0
+          npm install -g @tensorflow/tfjs-converter@4.11.0
 
-          python - <<'PY'
-          import numpy as np, tensorflow as tf
-          import tensorflowjs as tfjs
-          a, b = tf.constant([1.]), tf.constant([2.]); _ = a + b
-          print("✅ TFJS import OK | NumPy", np.__version__, "| TF", tf.__version__, "| TFJS", tfjs.__version__)
-          PY
-
-      - name: Convert model to TFJS (if present)
+      # Конвертируем модель Keras (.keras или .h5) в формат TensorFlow.js
+      - name: Convert Keras model to TFJS
         run: |
           set -euxo pipefail
           mkdir -p public/web_model
-
-          if [ -d "saved_model" ]; then
-            python - <<'PY'
-            import os, tensorflowjs as tfjs
-            src = "saved_model"; dst = "public/web_model/savedmodel"
-            os.makedirs(dst, exist_ok=True)
-            tfjs.converters.convert_tf_saved_model(src, dst)
-            print("✅ Converted SavedModel →", dst)
-            PY
-          fi
-
-          if [ -f "model.h5" ]; then
-            python - <<'PY'
-            import tensorflow as tf, tensorflowjs as tfjs, os
-            model = tf.keras.models.load_model("model.h5")
-            dst = "public/web_model/keras_h5"
-            os.makedirs(dst, exist_ok=True)
-            tfjs.converters.save_keras_model(model, dst)
-            print("✅ Converted Keras H5 →", dst)
-            PY
-          fi
-
+          # Если есть файл .keras, конвертируем его
           if ls *.keras >/dev/null 2>&1; then
-            python - <<'PY'
-            import glob, tensorflow as tf, tensorflowjs as tfjs, os
-            f = glob.glob("*.keras")[0]
-            model = tf.keras.models.load_model(f)
-            dst = "public/web_model/keras"
-            os.makedirs(dst, exist_ok=True)
-            tfjs.converters.save_keras_model(model, dst)
-            print("✅ Converted Keras .keras →", dst)
-            PY
+            MODEL=$(ls *.keras | head -n1)
+            tfjs-converter --input_format=keras "$MODEL" public/web_model
+          # Если есть файл .h5, конвертируем его
+          elif ls *.h5 >/dev/null 2>&1; then
+            MODEL=$(ls *.h5 | head -n1)
+            tfjs-converter --input_format=keras "$MODEL" public/web_model
+          else
+            echo "No Keras or H5 model found. Skipping conversion."
           fi
 
-          echo "ℹ️ Если моделей нет — шаг конвертации пропущен."
-
-      - name: Upload web_model artifact (if any)
+      # Загружаем артефакты для дальнейшего деплоя (например, GitHub Pages)
+      - name: Upload TFJS model as artifact
         uses: actions/upload-artifact@v4
         with:
           name: web_model
