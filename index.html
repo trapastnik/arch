@@ -20,17 +20,8 @@
       padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
     }
-    .wrap {
-      max-width: 720px;
-      margin: 0 auto;
-      padding: 10px 12px;
-    }
-    h1 {
-      font-size: 17px;
-      font-weight: 600;
-      margin: 0 0 8px;
-      text-align: left;
-    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 10px 12px; }
+    h1 { font-size: 17px; font-weight: 600; margin: 0 0 8px; text-align: left; }
     .card {
       background: #171a21;
       border: 1px solid #262a33;
@@ -38,7 +29,6 @@
       padding: 10px;
       box-shadow: 0 4px 18px rgba(0,0,0,.25);
     }
-    /* Видео компактнее, чтобы весь интерфейс влез без прокрутки */
     .video-wrap {
       position: relative;
       width: 100%;
@@ -49,89 +39,48 @@
     video {
       display: block;
       width: 100%;
-      max-height: 50vh; /* ключ: не больше половины экрана */
+      max-height: 50vh;
       border-radius: 10px;
       background: #000;
     }
-    .controls {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin: 8px 0 6px;
+    /* холст поверх видео для рамки */
+    canvas#overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
     }
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 6px; align-items: center; }
     button {
-      padding: 8px 12px;
-      border-radius: 9px;
-      border: 1px solid #2b3140;
-      background: #222a36;
-      color: #fff;
-      cursor: pointer;
-      font-size: 14px;
+      padding: 8px 12px; border-radius: 9px; border: 1px solid #2b3140;
+      background: #222a36; color: #fff; cursor: pointer; font-size: 14px;
     }
-    button[disabled] { opacity: .6; cursor: not-allowed; }
+    button[disabled]{ opacity:.6; cursor:not-allowed; }
+    label.switch { font-size: 13px; display:flex; align-items:center; gap:6px; opacity:.9; }
     #result { font-size: 16px; margin: 6px 0 2px; }
-    #sub { opacity: .8; font-size: 13px; margin-bottom: 4px; min-height: 18px; }
+    #sub { opacity:.8; font-size:13px; margin-bottom:4px; min-height:18px; }
 
-    /* Прогресс-бар */
     #progressWrap {
-      display: none;
-      height: 6px;
-      background: #11151c;
-      border: 1px solid #283041;
-      border-radius: 999px;
-      overflow: hidden;
-      margin: 4px 0 6px;
+      display:none; height:6px; background:#11151c; border:1px solid #283041;
+      border-radius:999px; overflow:hidden; margin:4px 0 6px;
     }
-    #progress { height: 100%; width: 0%; background: #4a90e2; }
+    #progress { height:100%; width:0%; background:#4a90e2; }
 
-    /* Топ-3 — компактные пилюли с переносами/скроллом по X, если не влезает */
-    .topk-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: nowrap;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      padding-bottom: 2px;
-    }
-    .label { font-size: 13px; opacity: .85; white-space: nowrap; }
-    .pill {
-      display: inline-block;
-      border: 1px solid #2b3140;
-      border-radius: 999px;
-      padding: 3px 8px;
-      white-space: nowrap;
-      font-size: 12px;
-      margin-right: 4px;
-    }
+    .topk-row { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
+    .label { font-size:13px; opacity:.85; white-space:nowrap; }
+    .pill { display:inline-block; border:1px solid #2b3140; border-radius:999px; padding:3px 8px; white-space:nowrap; font-size:12px; margin-right:4px; }
 
-    /* Диагностика свёрнута по умолчанию и компактна */
-    details { margin-top: 6px; }
-    details > summary { list-style: none; cursor: pointer; font-size: 12px; opacity: .75; }
-    details > summary::-webkit-details-marker { display: none; }
+    details { margin-top:6px; }
+    details>summary { list-style:none; cursor:pointer; font-size:12px; opacity:.75; }
+    details>summary::-webkit-details-marker{ display:none; }
     pre {
-      white-space: pre-wrap;
-      word-break: break-word;
-      background: #11151c;
-      border: 1px solid #283041;
-      padding: 8px;
-      border-radius: 8px;
-      font-size: 12px;
-      max-height: 22vh;
-      overflow: auto;
-      margin-top: 6px;
+      white-space:pre-wrap; word-break:break-word; background:#11151c; border:1px solid #283041;
+      padding:8px; border-radius:8px; font-size:12px; max-height:22vh; overflow:auto; margin-top:6px;
     }
-
-    .footer {
-      opacity: .6;
-      font-size: 11.5px;
-      margin-top: 8px;
-    }
-
-    /* Чуть ужать на очень узких экранах */
-    @media (max-width: 390px) {
-      #result { font-size: 15px; }
-      button { font-size: 13px; padding: 7px 10px; }
+    .footer { opacity:.6; font-size:11.5px; margin-top:8px; }
+    @media (max-width:390px){
+      #result{font-size:15px} button{font-size:13px;padding:7px 10px}
     }
   </style>
 </head>
@@ -142,12 +91,14 @@
     <div class="card">
       <div class="video-wrap">
         <video id="video" playsinline muted></video>
+        <canvas id="overlay"></canvas>
       </div>
 
       <div class="controls">
         <button id="btnStart">Старт камеры</button>
         <button id="btnStop" disabled>Стоп</button>
         <button id="btnFlip">Поменять камеру</button>
+        <label class="switch"><input id="chkAutoBox" type="checkbox" checked /> Авто-рамка</label>
       </div>
 
       <div id="result">Готово к запуску…</div>
@@ -155,10 +106,7 @@
 
       <div id="progressWrap"><div id="progress"></div></div>
 
-      <div class="topk-row">
-        <span class="label">Топ-3:</span>
-        <span id="topk"></span>
-      </div>
+      <div class="topk-row"><span class="label">Топ-3:</span><span id="topk"></span></div>
 
       <details>
         <summary>Диагностика</summary>
@@ -166,7 +114,7 @@
       </details>
 
       <div class="footer">
-        Нужен HTTPS (GitHub Pages подойдёт). На iOS камера запускается только после клика. Для точной перезагрузки используйте приватную вкладку или «жёсткое обновление».
+        HTTPS обязателен (GitHub Pages ок). На iOS камера стартует только после клика.
       </div>
     </div>
   </div>
@@ -176,106 +124,73 @@
 const MODEL_URL = 'web_model/model.onnx';
 const MAP_URL   = 'class_mapping.json';
 
+/** ========= КОНСТАНТЫ ========= */
+const INPUT_SIZE = 224;          // размер входа модели
+const LOOP_INTERVAL_MS = 150;    // частота инференса
+const EDGE_SIZE = 160;           // размер для быстрого поиска рамки
+
 /** ========= ГЛОБАЛ ========= */
-const INPUT_SIZE = 224;
-const LOOP_INTERVAL_MS = 150;
-
 let session = null, mapping = null;
-let video = null, stream = null;
-let usingBack = true;
-let rafId = null, lastTs = 0;
-let INPUT_NAME = null, OUTPUT_NAME = null;
-let useNCHW = false; // авто-детект; по умолчанию NHWC
+let video = null, stream = null, overlay = null, octx = null;
+let usingBack = true, rafId = null, lastTs = 0;
+let INPUT_NAME = null, OUTPUT_NAME = null, useNCHW = false;
+let autoBox = true;
+let lastBox = null; // {x,y,w,h} в координатах overlay-canvas
 
-/** ========= МЕЛОЧИ ========= */
+/** ========= УТИЛИТЫ ========= */
 const $ = s => document.querySelector(s);
 const setText = (id, t) => document.getElementById(id).innerText = t;
-function logDiag(obj){
-  const el = document.getElementById('diag');
-  el.textContent += (typeof obj==='string' ? obj : JSON.stringify(obj, null, 2)) + '\n';
-}
+function logDiag(obj){ const el=$('#diag'); el.textContent += (typeof obj==='string'?obj:JSON.stringify(obj,null,2))+'\n'; }
 function setStatus(txt, pct=null){
   setText('result', txt);
-  const bar = document.getElementById('progress');
-  const wrap = document.getElementById('progressWrap');
-  if (pct === null){ wrap.style.display = 'none'; }
-  else { wrap.style.display = 'block'; bar.style.width = `${Math.max(0, Math.min(100, Math.round(pct*100)))}%`; }
+  const wrap = $('#progressWrap'), bar = $('#progress');
+  if (pct==null){ wrap.style.display='none'; }
+  else { wrap.style.display='block'; bar.style.width = `${Math.max(0,Math.min(100,Math.round(pct*100)))}%`; }
 }
 
 /** ========= ЗАГРУЗКА С ПРОГРЕССОМ ========= */
 async function fetchModelWithProgress(url, onProgress){
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} while fetching model`);
+  const resp = await fetch(url); if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const total = +resp.headers.get('Content-Length') || 0;
   const reader = resp.body?.getReader?.();
-  if (!reader) {
-    const ab = await resp.arrayBuffer();
-    onProgress && onProgress(1);
-    return new Uint8Array(ab);
-  }
-  const chunks = [];
-  let rec = 0;
-  for(;;){
-    const {done, value} = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    rec += value.byteLength;
-    if (total) onProgress && onProgress(rec/total);
-  }
-  const blob = new Blob(chunks);
-  const ab = await blob.arrayBuffer();
-  onProgress && onProgress(1);
-  return new Uint8Array(ab);
+  if(!reader){ const ab=await resp.arrayBuffer(); onProgress?.(1); return new Uint8Array(ab); }
+  const chunks=[]; let rec=0;
+  for(;;){ const {done,value}=await reader.read(); if(done) break; chunks.push(value); rec+=value.byteLength; if(total) onProgress?.(rec/total); }
+  const blob=new Blob(chunks); const ab=await blob.arrayBuffer(); onProgress?.(1); return new Uint8Array(ab);
 }
 
 /** ========= МОДЕЛЬ + МАППИНГ ========= */
 async function loadAll(){
-  setStatus('Загрузка рантайма…');
-  await new Promise(r=>setTimeout(r, 40)); // дать перерисоваться
-
-  setStatus('Загрузка модели…', 0);
-  const modelBytes = await fetchModelWithProgress(MODEL_URL, p=>{
-    setStatus(`Загрузка модели… ${Math.round(p*100)}%`, p);
-  });
+  setStatus('Загрузка рантайма…'); await new Promise(r=>setTimeout(r,40));
+  setStatus('Загрузка модели…',0);
+  const modelBytes = await fetchModelWithProgress(MODEL_URL, p=>setStatus(`Загрузка модели… ${Math.round(p*100)}%`,p));
 
   setStatus('Инициализация модели…');
-  session = await ort.InferenceSession.create(modelBytes, {
-    executionProviders: ['wasm'],
-    graphOptimizationLevel: 'all'
-  });
+  session = await ort.InferenceSession.create(modelBytes,{ executionProviders:['wasm'], graphOptimizationLevel:'all' });
 
   INPUT_NAME  = session.inputNames?.[0] ?? null;
   OUTPUT_NAME = session.outputNames?.[0] ?? null;
-
-  // Безопасно читаем метаданные
-  let dims = null;
-  try {
-    const meta = session.inputMetadata;
-    if (meta){
-      if (typeof meta.get === 'function' && INPUT_NAME){
-        dims = meta.get(INPUT_NAME)?.dimensions ?? null;
-      } else if (INPUT_NAME && meta[INPUT_NAME]){
-        dims = meta[INPUT_NAME].dimensions ?? null;
-      }
+  let dims=null;
+  try{
+    const meta=session.inputMetadata;
+    if(meta){
+      dims = typeof meta.get==='function' && INPUT_NAME ? meta.get(INPUT_NAME)?.dimensions
+           : (INPUT_NAME && meta[INPUT_NAME]) ? meta[INPUT_NAME].dimensions
+           : null;
     }
-  } catch(e){ logDiag('meta read error: ' + (e?.message || e)); }
-
-  // Авто-детект: где «3» — там канал; если нет данных, дефолт NHWC
-  useNCHW = (Array.isArray(dims) && dims.length===4 && dims[1]===3);
-  logDiag({ inputName: INPUT_NAME, outputName: OUTPUT_NAME, inputDims: dims, useNCHW });
+  }catch(e){ logDiag('meta read error: '+(e?.message||e)); }
+  useNCHW = (Array.isArray(dims)&&dims.length===4&&dims[1]===3); // иначе NHWC
+  logDiag({inputName:INPUT_NAME, outputName:OUTPUT_NAME, inputDims:dims, useNCHW});
 
   setStatus('Загрузка карты классов…');
   mapping = await fetch(MAP_URL).then(r=>r.json());
 
-  // Лёгкий прогрев
   setStatus('Прогрев модели…');
   try{
-    const W = INPUT_SIZE, H = INPUT_SIZE;
-    const zeros = new Float32Array(W*H*3);
-    const warm = useNCHW
-      ? new ort.Tensor('float32', zeros, [1,3,H,W])
-      : new ort.Tensor('float32', zeros, [1,H,W,3]);
-    await session.run({ [INPUT_NAME]: warm });
+    const zeros=new Float32Array(INPUT_SIZE*INPUT_SIZE*3);
+    const warm=useNCHW ? new ort.Tensor('float32',zeros,[1,3,INPUT_SIZE,INPUT_SIZE])
+                       : new ort.Tensor('float32',zeros,[1,INPUT_SIZE,INPUT_SIZE,3]);
+    await session.run({[INPUT_NAME]:warm});
   }catch(e){ logDiag('warmup: '+(e?.message||e)); }
 
   setStatus('Модель готова. Нажми «Старт камеры».', null);
@@ -285,35 +200,144 @@ async function loadAll(){
 /** ========= КАМЕРА ========= */
 async function startCamera(){
   if(stream) await stopCamera();
-  const constraints = { video: { facingMode: usingBack ? { ideal: 'environment' } : 'user' }, audio: false };
+  const constraints={ video:{ facingMode: usingBack?{ideal:'environment'}:'user' }, audio:false };
   stream = await navigator.mediaDevices.getUserMedia(constraints);
-  video = document.getElementById('video');
-  video.setAttribute('playsinline',''); // iOS не раскрывает на полный экран
-  video.srcObject = stream;
-  video.muted = true;
-  await video.play();
-}
+  video = $('#video'); video.setAttribute('playsinline',''); video.srcObject=stream; video.muted=true; await video.play();
 
+  // подготовим overlay
+  overlay = $('#overlay'); octx = overlay.getContext('2d');
+  resizeOverlay(); // подогнать размер холста под видео
+  window.addEventListener('resize', resizeOverlay, { passive:true });
+}
 async function stopCamera(){
   if(stream){ for(const t of stream.getTracks()) t.stop(); }
-  stream = null;
-  if(video) video.srcObject = null;
+  stream=null; if(video) video.srcObject=null;
+  window.removeEventListener('resize', resizeOverlay);
+}
+function resizeOverlay(){
+  if(!video||!overlay) return;
+  const rect = video.getBoundingClientRect();
+  overlay.width = rect.width * devicePixelRatio;
+  overlay.height= rect.height* devicePixelRatio;
+  lastBox = null;
+}
+
+/** ========= ПОИСК РАМКИ =========
+ * Идея: уменьшить кадр до EDGE_SIZE, посчитать карту границ (Sobel),
+ * построить интегральное изображение и выбрать окно фиксированной плотности
+ * с аспектом около планшета (1.33–1.6), которое даёт максимум суммы.
+ */
+function findTabletBox(v){
+  if(!overlay) return null;
+  const vw = overlay.width, vh = overlay.height; // в CSS-пикселях * dpr
+  // берём bitmap из видео в маленький буфер
+  const s = EDGE_SIZE, cvs = document.createElement('canvas');
+  cvs.width=s; cvs.height=s * (vh/vw); // сохраняем пропорции вида
+  const ctx = cvs.getContext('2d', { willReadFrequently:true });
+  ctx.drawImage(v, 0, 0, cvs.width, cvs.height);
+  const { data, width:W, height:H } = ctx.getImageData(0,0,cvs.width,cvs.height);
+
+  // градиенты Sobel
+  const gxK = [-1,0,1,-2,0,2,-1,0,1];
+  const gyK = [-1,-2,-1,0,0,0,1,2,1];
+  const gray = new Float32Array(W*H);
+  for(let i=0,p=0;i<gray.length;i++){ const r=data[p++],g=data[p++],b=data[p++]; p++; gray[i]=(0.299*r+0.587*g+0.114*b); }
+  const mag = new Float32Array(W*H);
+  for(let y=1;y<H-1;y++){
+    for(let x=1;x<W-1;x++){
+      let gx=0, gy=0, k=0;
+      for(let j=-1;j<=1;j++){
+        for(let i=-1;i<=1;i++){
+          const v = gray[(y+j)*W + (x+i)];
+          gx += v * gxK[k];
+          gy += v * gyK[k];
+          k++;
+        }
+      }
+      const m = Math.hypot(gx,gy);
+      mag[y*W + x] = m;
+    }
+  }
+  // интегральное изображение для быстрых сумм по окну
+  const ii = new Float32Array((W+1)*(H+1));
+  for(let y=1;y<=H;y++){
+    let rowSum=0;
+    for(let x=1;x<=W;x++){
+      rowSum += mag[(y-1)*W + (x-1)];
+      ii[y*(W+1)+x] = ii[(y-1)*(W+1)+x] + rowSum;
+    }
+  }
+  const sumRect = (x0,y0,x1,y1)=>{ // включая x1,y1
+    return ii[y1*(W+1)+x1] - ii[y0*(W+1)+x1] - ii[y1*(W+1)+x0] + ii[y0*(W+1)+x0];
+  };
+
+  // перебор окон с аспектом ~планшета
+  const aspects = [1.33, 1.5, 1.6];
+  let best = {score:-1, x:0,y:0,w:W,h:H};
+  for(const ar of aspects){
+    // масштабы окна от 45% до 95% ширины, шагами
+    for(let w = Math.floor(W*0.45); w <= Math.floor(W*0.95); w += Math.max(8, Math.floor(W*0.08))){
+      const h = Math.floor(w / ar);
+      if(h<16 || h>H) continue;
+      for(let x=1; x+w < W; x += Math.max(6, Math.floor(W*0.06))){
+        for(let y=1; y+h < H; y += Math.max(6, Math.floor(H*0.06))){
+          const s = sumRect(x, y, x+w, y+h) / (w*h); // средняя “резкость” окна
+          if(s > best.score){ best={score:s, x, y, w, h}; }
+        }
+      }
+    }
+  }
+  // перевод координат в пиксели overlay (учитывая dpr и соотношение сторон)
+  const dpr = devicePixelRatio;
+  const scaleX = vw / W;
+  const scaleY = vh / H;
+  return {
+    x: Math.max(0, Math.floor(best.x * scaleX)),
+    y: Math.max(0, Math.floor(best.y * scaleY)),
+    w: Math.max(1, Math.floor(best.w * scaleX)),
+    h: Math.max(1, Math.floor(best.h * scaleY)),
+  };
+}
+
+/** ========= ОТРИСОВКА РАМКИ ========= */
+function drawBox(box){
+  if(!octx || !overlay) return;
+  octx.clearRect(0,0,overlay.width,overlay.height);
+  if(!box) return;
+  octx.lineWidth = 3 * devicePixelRatio;
+  octx.strokeStyle = 'rgba(80,160,255,0.95)';
+  octx.setLineDash([10*devicePixelRatio, 6*devicePixelRatio]);
+  octx.strokeRect(box.x, box.y, box.w, box.h);
+  octx.setLineDash([]);
 }
 
 /** ========= ПРЕПРОЦЕСС ========= */
 function preprocessToTensor(v){
   const W = INPUT_SIZE, H = INPUT_SIZE;
+  // если есть бокс — берём его ROI из видео, иначе весь кадр
   const cvs = document.createElement('canvas');
   cvs.width = W; cvs.height = H;
-  const ctx = cvs.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(v, 0, 0, W, H);
+  const ctx = cvs.getContext('2d', { willReadFrequently:true });
+
+  if (autoBox && lastBox && overlay){
+    // координаты lastBox — в пикселях overlay (умноженных на dpr).
+    // Переведём их в CSS-координаты видео:
+    const dpr = devicePixelRatio;
+    const sx = lastBox.x / dpr, sy = lastBox.y / dpr;
+    const sw = lastBox.w / dpr, sh = lastBox.h / dpr;
+    // Рисуем ROI, растягивая на 224×224
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, W, H);
+  } else {
+    ctx.drawImage(video, 0, 0, W, H);
+  }
+
   const { data } = ctx.getImageData(0, 0, W, H);
   const wh = W*H;
 
   if (useNCHW) {
     const floats = new Float32Array(wh*3);
     for (let i=0,p=0;i<wh;i++){
-      const r=data[p++], g=data[p++], b=data[p++]; p++; // A
+      const r=data[p++], g=data[p++], b=data[p++]; p++;
       floats[i]       = (r/127.5 - 1);
       floats[i+wh]    = (g/127.5 - 1);
       floats[i+2*wh]  = (b/127.5 - 1);
@@ -333,13 +357,11 @@ function preprocessToTensor(v){
 
 /** ========= ИНФЕРЕНС ========= */
 function topkSoftmax(logits, k=3){
-  let maxL = -Infinity;
-  for (let i=0;i<logits.length;i++) if (logits[i]>maxL) maxL = logits[i];
-  let sum = 0; const exps = new Float32Array(logits.length);
-  for (let i=0;i<logits.length;i++){ const e = Math.exp(logits[i]-maxL); exps[i]=e; sum+=e; }
-  const probs = new Float32Array(logits.length);
-  for (let i=0;i<logits.length;i++) probs[i] = exps[i]/sum;
-  const idxs = [...probs.keys()].sort((a,b)=>probs[b]-probs[a]);
+  let maxL=-Infinity; for(let i=0;i<logits.length;i++) if(logits[i]>maxL) maxL=logits[i];
+  let sum=0; const exps=new Float32Array(logits.length);
+  for(let i=0;i<logits.length;i++){ const e=Math.exp(logits[i]-maxL); exps[i]=e; sum+=e; }
+  const probs=new Float32Array(logits.length); for(let i=0;i<logits.length;i++) probs[i]=exps[i]/sum;
+  const idxs=[...probs.keys()].sort((a,b)=>probs[b]-probs[a]);
   return { top1Idx: idxs[0], top1Prob: probs[idxs[0]], top3: idxs.slice(0,k).map(i=>({idx:i, prob:probs[i]})) };
 }
 
@@ -347,16 +369,22 @@ async function predictLoop(ts){
   if (!lastTs || ts - lastTs >= LOOP_INTERVAL_MS) {
     lastTs = ts;
     try {
+      // обновим бокс раз в цикл (дешёвый анализ на уменьшенном кадре)
+      if (autoBox) {
+        lastBox = findTabletBox(video) || lastBox;
+        drawBox(lastBox);
+      } else {
+        drawBox(null);
+      }
+
       const x = preprocessToTensor(video);
       const out = await session.run({ [INPUT_NAME]: x });
       const logits = out[OUTPUT_NAME].data;
       const { top1Idx, top1Prob, top3 } = topkSoftmax(logits, 3);
       const name = mapping[String(top1Idx)] ?? `class_${top1Idx}`;
       setText('result', `🧩 ${name} (${(top1Prob*100).toFixed(1)}%)`);
-      setText('sub', `Класс #${top1Idx} • Формат: ${useNCHW?'NCHW':'NHWC'}`);
-      document.getElementById('topk').innerHTML = top3.map(
-        ({idx, prob}) => `<span class="pill">${mapping[String(idx)] ?? 'class_'+idx} — ${(prob*100).toFixed(1)}%</span>`
-      ).join('');
+      setText('sub', `Класс #${top1Idx} • Формат: ${useNCHW?'NCHW':'NHWC'}${autoBox?' • ROI: on':''}`);
+      $('#topk').innerHTML = top3.map(({idx,prob})=>`<span class="pill">${mapping[String(idx)] ?? 'class_'+idx} — ${(prob*100).toFixed(1)}%</span>`).join('');
     } catch (e) {
       setText('result','Ошибка инференса');
       setText('sub', e?.message || String(e));
@@ -389,10 +417,15 @@ document.getElementById('btnStop').addEventListener('click', async ()=>{
   $('#btnStop').disabled = true;
   $('#btnStart').disabled = false;
   setStatus('Остановлено.', null);
+  drawBox(null);
 });
 document.getElementById('btnFlip').addEventListener('click', async ()=>{
   usingBack = !usingBack;
   if (stream){ await startCamera(); }
+});
+document.getElementById('chkAutoBox').addEventListener('change', (e)=>{
+  autoBox = e.target.checked;
+  if(!autoBox) drawBox(null);
 });
 </script>
 </body>
