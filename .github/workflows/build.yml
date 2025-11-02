@@ -1,61 +1,35 @@
-name: build
+name: Deploy static site
 
 on:
   push:
-    branches: [main, master]
-  pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
 jobs:
-  build:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      # Получаем исходный код
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # Настраиваем Python 3.10 и устанавливаем фиксированные зависимости для обучения и теста
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      # Если файлы в поддиректории (например, site), укажи её
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          python-version: "3.10"
+          path: ./site
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install numpy==1.23.5 pandas==2.0.3 tensorflow-cpu==2.12.0
-
-      # Настраиваем Node.js
-      - name: Set up Node
-        uses: actions/setup-node@v3
-        with:
-          node-version: "18"
-
-      # Устанавливаем глобально CLI tfjs-converter
-      - name: Install TensorFlow.js converter
-        run: |
-          npm install -g @tensorflow/tfjs-converter@4.11.0
-
-      # Конвертируем модель Keras (.keras или .h5) в формат TensorFlow.js
-      - name: Convert Keras model to TFJS
-        run: |
-          set -euxo pipefail
-          mkdir -p public/web_model
-          # Если есть файл .keras, конвертируем его
-          if ls *.keras >/dev/null 2>&1; then
-            MODEL=$(ls *.keras | head -n1)
-            tfjs-converter --input_format=keras "$MODEL" public/web_model
-          # Если есть файл .h5, конвертируем его
-          elif ls *.h5 >/dev/null 2>&1; then
-            MODEL=$(ls *.h5 | head -n1)
-            tfjs-converter --input_format=keras "$MODEL" public/web_model
-          else
-            echo "No Keras or H5 model found. Skipping conversion."
-          fi
-
-      # Загружаем артефакты для дальнейшего деплоя (например, GitHub Pages)
-      - name: Upload TFJS model as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: web_model
-          path: public/web_model
-          if-no-files-found: warn
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
