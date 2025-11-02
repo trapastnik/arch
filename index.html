@@ -57,7 +57,7 @@ const MODEL_URL = 'web_model/model.onnx';
 const MAP_URL   = 'class_mapping.json';
 const INPUT_SIZE = 224;            // размер, на который ресайзим кадр
 const LOOP_INTERVAL_MS = 150;      // частота инференса (~6-7 FPS)
-const USE_NCHW = true;             // tf2onnx обычно экспортирует NCHW [1,3,H,W]
+const USE_NCHW = false;             // tf2onnx обычно экспортирует NCHW [1,3,H,W]
 // Если твой ONNX ожидает NHWC — поставь false и см. функцию preprocessToTensor
 
 /** ======== ГЛОБАЛ ======== */
