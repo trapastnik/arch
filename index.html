@@ -58,56 +58,75 @@
   </div>
 
 <script>
-/** ======== НАСТРОЙКИ ПУТЕЙ ======== */
 const MODEL_URL = 'web_model/model.onnx';
 const MAP_URL   = 'class_mapping.json';
 
-/** ======== ГЛОБАЛ ======== */
-const INPUT_SIZE = 224;                 // подгон под твою модель
-const LOOP_INTERVAL_MS = 150;           // частота инференса
+const INPUT_SIZE = 224;
+const LOOP_INTERVAL_MS = 150;
+
 let session = null, mapping = null;
 let video = null, stream = null;
 let usingBack = true;
 let rafId = null, lastTs = 0;
 let INPUT_NAME = null, OUTPUT_NAME = null;
-let useNCHW = false; // авто-определим после загрузки
+let useNCHW = false; // автоопределим, если получится
 
-/** ======== УТИЛИТЫ ======== */
 const $ = s => document.querySelector(s);
 const setText = (id, t) => document.getElementById(id).innerText = t;
+function logDiag(obj){ const el = document.getElementById('diag'); el.textContent += (typeof obj==='string'?obj:JSON.stringify(obj,null,2))+'\n'; }
 
-function logDiag(obj) {
-  const el = document.getElementById('diag');
-  el.textContent += (typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2)) + '\n';
-}
-
-/** ======== ЗАГРУЗКА МОДЕЛИ И МАППИНГА ======== */
 async function loadAll(){
   setText('result','Загрузка модели…');
+
+  // 1) создаём сессию
   session = await ort.InferenceSession.create(MODEL_URL, {
-    executionProviders: ['wasm'], // можно попробовать ['webgl'] для ускорения
+    executionProviders: ['wasm'],
     graphOptimizationLevel: 'all'
   });
 
-  // автоопределение формы входа
-  INPUT_NAME = session.inputNames[0];
-  OUTPUT_NAME = session.outputNames[0];
-  const metaIn = session.inputMetadata[INPUT_NAME];
-  const dims = metaIn.dimensions; // например, [1,224,224,3] или [1,3,224,224]
-  useNCHW = (dims && dims.length === 4 && dims[1] === 3);
-  logDiag({inputName: INPUT_NAME, inputDims: dims, useNCHW});
+  // 2) имена входа/выхода
+  INPUT_NAME  = Array.isArray(session.inputNames)  && session.inputNames.length  ? session.inputNames[0]  : null;
+  OUTPUT_NAME = Array.isArray(session.outputNames) && session.outputNames.length ? session.outputNames[0] : null;
 
+  // 3) безопасно пытаемся извлечь размерности
+  let dims = null;
+  try {
+    let meta = session.inputMetadata;
+    if (meta) {
+      if (typeof meta.get === 'function' && INPUT_NAME) { // Map-подобный
+        const m = meta.get(INPUT_NAME);
+        if (m && m.dimensions) dims = m.dimensions;
+      } else if (INPUT_NAME && meta[INPUT_NAME] && meta[INPUT_NAME].dimensions) {
+        dims = meta[INPUT_NAME].dimensions;
+      }
+    }
+  } catch(e) {
+    logDiag('meta read error: ' + (e?.message || e));
+  }
+
+  // 4) авто-детект формата; если нет метаданных — дефолт NHWC
+  if (Array.isArray(dims) && dims.length === 4) {
+    // где стоит «3» — там и канал
+    useNCHW = (dims[1] === 3);
+  } else {
+    useNCHW = false; // NHWC по умолчанию
+  }
+
+  logDiag({ inputName: INPUT_NAME, outputName: OUTPUT_NAME, inputDims: dims, useNCHW });
+
+  // 5) грузим mapping
   mapping = await fetch(MAP_URL).then(r=>r.json());
+
   setText('result','Модель загружена. Нажми «Старт камеры».');
   setText('sub', `Вход: ${INPUT_SIZE}×${INPUT_SIZE}, классов: ${Object.keys(mapping).length} • Формат: ${useNCHW?'NCHW':'NHWC'}`);
 }
 
-/** ======== КАМЕРА ======== */
 async function startCamera(){
   if(stream) await stopCamera();
   const constraints = { video: { facingMode: usingBack ? { ideal: 'environment' } : 'user' }, audio: false };
   stream = await navigator.mediaDevices.getUserMedia(constraints);
   video = document.getElementById('video');
+  video.setAttribute('playsinline',''); // iOS
   video.srcObject = stream;
   video.muted = true;
   await video.play();
@@ -119,7 +138,6 @@ async function stopCamera(){
   if(video) video.srcObject = null;
 }
 
-/** ======== ПРЕПРОЦЕСС ======== */
 function preprocessToTensor(v){
   const W = INPUT_SIZE, H = INPUT_SIZE;
   const cvs = document.createElement('canvas');
@@ -128,20 +146,18 @@ function preprocessToTensor(v){
   ctx.drawImage(v, 0, 0, W, H);
   const { data } = ctx.getImageData(0, 0, W, H);
 
-  const wh = W * H;
+  const wh = W*H;
   if (useNCHW) {
-    // [1, 3, H, W]
-    const floats = new Float32Array(wh * 3);
+    const floats = new Float32Array(wh*3);
     for (let i=0,p=0;i<wh;i++){
-      const r=data[p++], g=data[p++], b=data[p++]; p++; // A
+      const r=data[p++], g=data[p++], b=data[p++]; p++;
       floats[i]       = (r/127.5 - 1);
       floats[i+wh]    = (g/127.5 - 1);
       floats[i+2*wh]  = (b/127.5 - 1);
     }
     return new ort.Tensor('float32', floats, [1,3,H,W]);
   } else {
-    // [1, H, W, 3]
-    const floats = new Float32Array(wh * 3);
+    const floats = new Float32Array(wh*3);
     for (let i=0,p=0,q=0;i<wh;i++){
       const r=data[p++], g=data[p++], b=data[p++]; p++;
       floats[q++] = (r/127.5 - 1);
@@ -152,7 +168,6 @@ function preprocessToTensor(v){
   }
 }
 
-/** ======== ИНФЕРЕНС ======== */
 function topkSoftmax(logits, k=3){
   let maxL = -Infinity;
   for (let i=0;i<logits.length;i++) if (logits[i]>maxL) maxL = logits[i];
@@ -161,11 +176,7 @@ function topkSoftmax(logits, k=3){
   const probs = new Float32Array(logits.length);
   for (let i=0;i<logits.length;i++) probs[i] = exps[i]/sum;
   const idxs = [...probs.keys()].sort((a,b)=>probs[b]-probs[a]);
-  return {
-    top1Idx: idxs[0],
-    top1Prob: probs[idxs[0]],
-    top3: idxs.slice(0,k).map(i=>({idx:i, prob:probs[i]}))
-  };
+  return { top1Idx: idxs[0], top1Prob: probs[idxs[0]], top3: idxs.slice(0,k).map(i=>({idx:i, prob:probs[i]})) };
 }
 
 async function predictLoop(ts){
@@ -173,30 +184,29 @@ async function predictLoop(ts){
     lastTs = ts;
     try {
       const x = preprocessToTensor(video);
-      const outMap = await session.run({ [INPUT_NAME]: x });
-      const logits = outMap[OUTPUT_NAME].data;
+      const out = await session.run({ [INPUT_NAME]: x });
+      const logits = out[OUTPUT_NAME].data;
       const { top1Idx, top1Prob, top3 } = topkSoftmax(logits, 3);
 
       const name = mapping[String(top1Idx)] ?? `class_${top1Idx}`;
       setText('result', `🧩 ${name} (${(top1Prob*100).toFixed(1)}%)`);
-      setText('sub', `Класс #${top1Idx} • Формат входа: ${useNCHW?'NCHW':'NHWC'}`);
+      setText('sub', `Класс #${top1Idx} • Формат: ${useNCHW?'NCHW':'NHWC'}`);
       document.getElementById('topk').innerHTML = top3.map(
         ({idx, prob}) => `<span class="pill">${mapping[String(idx)] ?? 'class_'+idx} — ${(prob*100).toFixed(1)}%</span>`
       ).join(' ');
     } catch (e) {
-      setText('result', 'Ошибка инференса');
-      document.getElementById('sub').innerText = e && e.message ? e.message : String(e);
+      setText('result','Ошибка инференса');
+      setText('sub', e?.message || String(e));
       logDiag(e?.stack || String(e));
     }
   }
   rafId = requestAnimationFrame(predictLoop);
 }
 
-/** ======== UI ======== */
 document.getElementById('btnStart').addEventListener('click', async ()=>{
   try{
     $('#btnStart').disabled = true;
-    await loadAll();
+    await loadAll();           // ⬅️ больше не падает без метаданных
     await startCamera();
     $('#btnStop').disabled = false;
     setText('result','Камера запущена. Распознаём…');
@@ -208,20 +218,13 @@ document.getElementById('btnStart').addEventListener('click', async ()=>{
     logDiag(e?.stack || String(e));
   }
 });
-
 document.getElementById('btnStop').addEventListener('click', async ()=>{
-  try{
-    if (rafId) cancelAnimationFrame(rafId);
-    await stopCamera();
-    $('#btnStop').disabled = true;
-    $('#btnStart').disabled = false;
-    setText('result','Остановлено.');
-  }catch(e){
-    setText('result','Ошибка остановки');
-    setText('sub', e?.message || String(e));
-  }
+  if (rafId) cancelAnimationFrame(rafId);
+  await stopCamera();
+  $('#btnStop').disabled = true;
+  $('#btnStart').disabled = false;
+  setText('result','Остановлено.');
 });
-
 document.getElementById('btnFlip').addEventListener('click', async ()=>{
   usingBack = !usingBack;
   if (stream){ await startCamera(); }
