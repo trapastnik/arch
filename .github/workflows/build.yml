@@ -24,11 +24,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Если файлы в поддиректории (например, site), укажи её
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./site
+          path: .   # 🔹 КОРЕНЬ проекта (где index.html и web_model)
 
       - name: Deploy to GitHub Pages
         id: deployment
