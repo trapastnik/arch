@@ -2,27 +2,137 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+  />
   <title>Распознавание планшетов — ONNX Web</title>
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
   <style>
-    :root{color-scheme:dark}
-    *{box-sizing:border-box}
-    body{margin:0;background:#0f1115;color:#e6e6e6;font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif}
-    .wrap{max-width:780px;margin:0 auto;padding:16px}
-    h1{font-size:20px;margin:8px 0 14px}
-    .card{background:#171a21;border:1px solid #262a33;border-radius:14px;padding:14px;box-shadow:0 4px 20px rgba(0,0,0,.25)}
-    video{width:100%;max-height:60vh;border-radius:12px;background:#000}
-    .controls{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
-    button{padding:10px 16px;border-radius:10px;border:1px solid #2b3140;background:#222a36;color:#fff;cursor:pointer}
-    button[disabled]{opacity:.6;cursor:not-allowed}
-    #result{font-size:18px;margin:8px 0 2px}
-    #sub{opacity:.8;font-size:14px;margin-bottom:6px}
-    .pill{display:inline-block;border:1px solid #2b3140;border-radius:999px;padding:4px 10px;margin-right:6px;margin-top:6px;font-size:13px}
-    .muted{opacity:.7}
-    .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-    .footer{opacity:.6;font-size:12px;margin-top:14px}
-    pre{white-space:pre-wrap;word-break:break-word;background:#11151c;border:1px solid #283041;padding:10px;border-radius:10px}
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: #0f1115;
+      color: #e6e6e6;
+      font: 15px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, sans-serif;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 10px 12px;
+    }
+    h1 {
+      font-size: 17px;
+      font-weight: 600;
+      margin: 0 0 8px;
+      text-align: left;
+    }
+    .card {
+      background: #171a21;
+      border: 1px solid #262a33;
+      border-radius: 12px;
+      padding: 10px;
+      box-shadow: 0 4px 18px rgba(0,0,0,.25);
+    }
+    /* Видео компактнее, чтобы весь интерфейс влез без прокрутки */
+    .video-wrap {
+      position: relative;
+      width: 100%;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+    }
+    video {
+      display: block;
+      width: 100%;
+      max-height: 50vh; /* ключ: не больше половины экрана */
+      border-radius: 10px;
+      background: #000;
+    }
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 8px 0 6px;
+    }
+    button {
+      padding: 8px 12px;
+      border-radius: 9px;
+      border: 1px solid #2b3140;
+      background: #222a36;
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button[disabled] { opacity: .6; cursor: not-allowed; }
+    #result { font-size: 16px; margin: 6px 0 2px; }
+    #sub { opacity: .8; font-size: 13px; margin-bottom: 4px; min-height: 18px; }
+
+    /* Прогресс-бар */
+    #progressWrap {
+      display: none;
+      height: 6px;
+      background: #11151c;
+      border: 1px solid #283041;
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 4px 0 6px;
+    }
+    #progress { height: 100%; width: 0%; background: #4a90e2; }
+
+    /* Топ-3 — компактные пилюли с переносами/скроллом по X, если не влезает */
+    .topk-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 2px;
+    }
+    .label { font-size: 13px; opacity: .85; white-space: nowrap; }
+    .pill {
+      display: inline-block;
+      border: 1px solid #2b3140;
+      border-radius: 999px;
+      padding: 3px 8px;
+      white-space: nowrap;
+      font-size: 12px;
+      margin-right: 4px;
+    }
+
+    /* Диагностика свёрнута по умолчанию и компактна */
+    details { margin-top: 6px; }
+    details > summary { list-style: none; cursor: pointer; font-size: 12px; opacity: .75; }
+    details > summary::-webkit-details-marker { display: none; }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #11151c;
+      border: 1px solid #283041;
+      padding: 8px;
+      border-radius: 8px;
+      font-size: 12px;
+      max-height: 22vh;
+      overflow: auto;
+      margin-top: 6px;
+    }
+
+    .footer {
+      opacity: .6;
+      font-size: 11.5px;
+      margin-top: 8px;
+    }
+
+    /* Чуть ужать на очень узких экранах */
+    @media (max-width: 390px) {
+      #result { font-size: 15px; }
+      button { font-size: 13px; padding: 7px 10px; }
+    }
   </style>
 </head>
 <body>
@@ -30,7 +140,9 @@
     <h1>📷 Распознавание планшетов (ONNXRuntime Web)</h1>
 
     <div class="card">
-      <video id="video" playsinline muted></video>
+      <div class="video-wrap">
+        <video id="video" playsinline muted></video>
+      </div>
 
       <div class="controls">
         <button id="btnStart">Старт камеры</button>
@@ -41,26 +153,30 @@
       <div id="result">Готово к запуску…</div>
       <div id="sub" class="muted">Загрузится модель и карта классов.</div>
 
-      <div class="row">
-        Топ-3:
+      <div id="progressWrap"><div id="progress"></div></div>
+
+      <div class="topk-row">
+        <span class="label">Топ-3:</span>
         <span id="topk"></span>
       </div>
 
-      <details style="margin-top:10px">
-        <summary class="muted">Диагностика</summary>
+      <details>
+        <summary>Диагностика</summary>
         <pre id="diag"></pre>
       </details>
 
       <div class="footer">
-        Советы: нужен HTTPS (GitHub Pages подойдёт). На iOS камера запускается только после клика.
+        Нужен HTTPS (GitHub Pages подойдёт). На iOS камера запускается только после клика. Для точной перезагрузки используйте приватную вкладку или «жёсткое обновление».
       </div>
     </div>
   </div>
 
 <script>
+/** ========= ПУТИ ========= */
 const MODEL_URL = 'web_model/model.onnx';
 const MAP_URL   = 'class_mapping.json';
 
+/** ========= ГЛОБАЛ ========= */
 const INPUT_SIZE = 224;
 const LOOP_INTERVAL_MS = 150;
 
@@ -69,64 +185,110 @@ let video = null, stream = null;
 let usingBack = true;
 let rafId = null, lastTs = 0;
 let INPUT_NAME = null, OUTPUT_NAME = null;
-let useNCHW = false; // автоопределим, если получится
+let useNCHW = false; // авто-детект; по умолчанию NHWC
 
+/** ========= МЕЛОЧИ ========= */
 const $ = s => document.querySelector(s);
 const setText = (id, t) => document.getElementById(id).innerText = t;
-function logDiag(obj){ const el = document.getElementById('diag'); el.textContent += (typeof obj==='string'?obj:JSON.stringify(obj,null,2))+'\n'; }
+function logDiag(obj){
+  const el = document.getElementById('diag');
+  el.textContent += (typeof obj==='string' ? obj : JSON.stringify(obj, null, 2)) + '\n';
+}
+function setStatus(txt, pct=null){
+  setText('result', txt);
+  const bar = document.getElementById('progress');
+  const wrap = document.getElementById('progressWrap');
+  if (pct === null){ wrap.style.display = 'none'; }
+  else { wrap.style.display = 'block'; bar.style.width = `${Math.max(0, Math.min(100, Math.round(pct*100)))}%`; }
+}
 
+/** ========= ЗАГРУЗКА С ПРОГРЕССОМ ========= */
+async function fetchModelWithProgress(url, onProgress){
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} while fetching model`);
+  const total = +resp.headers.get('Content-Length') || 0;
+  const reader = resp.body?.getReader?.();
+  if (!reader) {
+    const ab = await resp.arrayBuffer();
+    onProgress && onProgress(1);
+    return new Uint8Array(ab);
+  }
+  const chunks = [];
+  let rec = 0;
+  for(;;){
+    const {done, value} = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    rec += value.byteLength;
+    if (total) onProgress && onProgress(rec/total);
+  }
+  const blob = new Blob(chunks);
+  const ab = await blob.arrayBuffer();
+  onProgress && onProgress(1);
+  return new Uint8Array(ab);
+}
+
+/** ========= МОДЕЛЬ + МАППИНГ ========= */
 async function loadAll(){
-  setText('result','Загрузка модели…');
+  setStatus('Загрузка рантайма…');
+  await new Promise(r=>setTimeout(r, 40)); // дать перерисоваться
 
-  // 1) создаём сессию
-  session = await ort.InferenceSession.create(MODEL_URL, {
+  setStatus('Загрузка модели…', 0);
+  const modelBytes = await fetchModelWithProgress(MODEL_URL, p=>{
+    setStatus(`Загрузка модели… ${Math.round(p*100)}%`, p);
+  });
+
+  setStatus('Инициализация модели…');
+  session = await ort.InferenceSession.create(modelBytes, {
     executionProviders: ['wasm'],
     graphOptimizationLevel: 'all'
   });
 
-  // 2) имена входа/выхода
-  INPUT_NAME  = Array.isArray(session.inputNames)  && session.inputNames.length  ? session.inputNames[0]  : null;
-  OUTPUT_NAME = Array.isArray(session.outputNames) && session.outputNames.length ? session.outputNames[0] : null;
+  INPUT_NAME  = session.inputNames?.[0] ?? null;
+  OUTPUT_NAME = session.outputNames?.[0] ?? null;
 
-  // 3) безопасно пытаемся извлечь размерности
+  // Безопасно читаем метаданные
   let dims = null;
   try {
-    let meta = session.inputMetadata;
-    if (meta) {
-      if (typeof meta.get === 'function' && INPUT_NAME) { // Map-подобный
-        const m = meta.get(INPUT_NAME);
-        if (m && m.dimensions) dims = m.dimensions;
-      } else if (INPUT_NAME && meta[INPUT_NAME] && meta[INPUT_NAME].dimensions) {
-        dims = meta[INPUT_NAME].dimensions;
+    const meta = session.inputMetadata;
+    if (meta){
+      if (typeof meta.get === 'function' && INPUT_NAME){
+        dims = meta.get(INPUT_NAME)?.dimensions ?? null;
+      } else if (INPUT_NAME && meta[INPUT_NAME]){
+        dims = meta[INPUT_NAME].dimensions ?? null;
       }
     }
-  } catch(e) {
-    logDiag('meta read error: ' + (e?.message || e));
-  }
+  } catch(e){ logDiag('meta read error: ' + (e?.message || e)); }
 
-  // 4) авто-детект формата; если нет метаданных — дефолт NHWC
-  if (Array.isArray(dims) && dims.length === 4) {
-    // где стоит «3» — там и канал
-    useNCHW = (dims[1] === 3);
-  } else {
-    useNCHW = false; // NHWC по умолчанию
-  }
-
+  // Авто-детект: где «3» — там канал; если нет данных, дефолт NHWC
+  useNCHW = (Array.isArray(dims) && dims.length===4 && dims[1]===3);
   logDiag({ inputName: INPUT_NAME, outputName: OUTPUT_NAME, inputDims: dims, useNCHW });
 
-  // 5) грузим mapping
+  setStatus('Загрузка карты классов…');
   mapping = await fetch(MAP_URL).then(r=>r.json());
 
-  setText('result','Модель загружена. Нажми «Старт камеры».');
+  // Лёгкий прогрев
+  setStatus('Прогрев модели…');
+  try{
+    const W = INPUT_SIZE, H = INPUT_SIZE;
+    const zeros = new Float32Array(W*H*3);
+    const warm = useNCHW
+      ? new ort.Tensor('float32', zeros, [1,3,H,W])
+      : new ort.Tensor('float32', zeros, [1,H,W,3]);
+    await session.run({ [INPUT_NAME]: warm });
+  }catch(e){ logDiag('warmup: '+(e?.message||e)); }
+
+  setStatus('Модель готова. Нажми «Старт камеры».', null);
   setText('sub', `Вход: ${INPUT_SIZE}×${INPUT_SIZE}, классов: ${Object.keys(mapping).length} • Формат: ${useNCHW?'NCHW':'NHWC'}`);
 }
 
+/** ========= КАМЕРА ========= */
 async function startCamera(){
   if(stream) await stopCamera();
   const constraints = { video: { facingMode: usingBack ? { ideal: 'environment' } : 'user' }, audio: false };
   stream = await navigator.mediaDevices.getUserMedia(constraints);
   video = document.getElementById('video');
-  video.setAttribute('playsinline',''); // iOS
+  video.setAttribute('playsinline',''); // iOS не раскрывает на полный экран
   video.srcObject = stream;
   video.muted = true;
   await video.play();
@@ -138,6 +300,7 @@ async function stopCamera(){
   if(video) video.srcObject = null;
 }
 
+/** ========= ПРЕПРОЦЕСС ========= */
 function preprocessToTensor(v){
   const W = INPUT_SIZE, H = INPUT_SIZE;
   const cvs = document.createElement('canvas');
@@ -145,12 +308,12 @@ function preprocessToTensor(v){
   const ctx = cvs.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(v, 0, 0, W, H);
   const { data } = ctx.getImageData(0, 0, W, H);
-
   const wh = W*H;
+
   if (useNCHW) {
     const floats = new Float32Array(wh*3);
     for (let i=0,p=0;i<wh;i++){
-      const r=data[p++], g=data[p++], b=data[p++]; p++;
+      const r=data[p++], g=data[p++], b=data[p++]; p++; // A
       floats[i]       = (r/127.5 - 1);
       floats[i+wh]    = (g/127.5 - 1);
       floats[i+2*wh]  = (b/127.5 - 1);
@@ -168,6 +331,7 @@ function preprocessToTensor(v){
   }
 }
 
+/** ========= ИНФЕРЕНС ========= */
 function topkSoftmax(logits, k=3){
   let maxL = -Infinity;
   for (let i=0;i<logits.length;i++) if (logits[i]>maxL) maxL = logits[i];
@@ -187,13 +351,12 @@ async function predictLoop(ts){
       const out = await session.run({ [INPUT_NAME]: x });
       const logits = out[OUTPUT_NAME].data;
       const { top1Idx, top1Prob, top3 } = topkSoftmax(logits, 3);
-
       const name = mapping[String(top1Idx)] ?? `class_${top1Idx}`;
       setText('result', `🧩 ${name} (${(top1Prob*100).toFixed(1)}%)`);
       setText('sub', `Класс #${top1Idx} • Формат: ${useNCHW?'NCHW':'NHWC'}`);
       document.getElementById('topk').innerHTML = top3.map(
         ({idx, prob}) => `<span class="pill">${mapping[String(idx)] ?? 'class_'+idx} — ${(prob*100).toFixed(1)}%</span>`
-      ).join(' ');
+      ).join('');
     } catch (e) {
       setText('result','Ошибка инференса');
       setText('sub', e?.message || String(e));
@@ -203,13 +366,15 @@ async function predictLoop(ts){
   rafId = requestAnimationFrame(predictLoop);
 }
 
+/** ========= UI ========= */
 document.getElementById('btnStart').addEventListener('click', async ()=>{
   try{
     $('#btnStart').disabled = true;
-    await loadAll();           // ⬅️ больше не падает без метаданных
+    setStatus('Подготовка…');
+    await loadAll();
     await startCamera();
     $('#btnStop').disabled = false;
-    setText('result','Камера запущена. Распознаём…');
+    setStatus('Камера запущена. Распознаём…', null);
     rafId = requestAnimationFrame(predictLoop);
   }catch(e){
     $('#btnStart').disabled = false;
@@ -223,7 +388,7 @@ document.getElementById('btnStop').addEventListener('click', async ()=>{
   await stopCamera();
   $('#btnStop').disabled = true;
   $('#btnStart').disabled = false;
-  setText('result','Остановлено.');
+  setStatus('Остановлено.', null);
 });
 document.getElementById('btnFlip').addEventListener('click', async ()=>{
   usingBack = !usingBack;
