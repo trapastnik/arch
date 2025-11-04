@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
   <title>Распознавание планшетов — ONNX Web</title>
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  <!-- OpenCV.js для детекции квадратов и warp -->
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -67,5 +69,8 @@
   </div>
 
   <script type="module" src="./src/main.js"></script>
+  
+  <!-- Наш лёгкий пайплайн Auto-ROI -->
+  <script src="src/pipeline-auto-roi.js"></script>
 </body>
 </html>
