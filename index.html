@@ -1,33 +1,217 @@
 <!DOCTYPE html>
-<html lang="ru"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Распознавание планшетов</title>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
-<style>body{background:#111;color:#fff;font-family:sans-serif;text-align:center}
-video{width:90vw;max-width:480px;border-radius:12px;margin-top:16px}#result{margin:12px auto;font-size:1.1rem}</style>
-</head><body>
-<h2>📷 Распознавание архитектурных планшетов</h2>
-<video id="video" autoplay playsinline></video>
-<div id="result">Загрузка модели…</div>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+  <title>Распознавание планшетов (ONNXRuntime Web)</title>
+  <!-- ONNXRuntime Web -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  <style>
+    :root{color-scheme:dark}
+    body{margin:0;background:#0f1115;color:#e6e6e6;font:16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif}
+    .wrap{max-width:680px;margin:0 auto;padding:16px}
+    h1{font-size:20px;margin:8px 0 12px}
+    .card{background:#171a21;border:1px solid #262a33;border-radius:14px;padding:14px;box-shadow:0 4px 20px rgba(0,0,0,.25)}
+    video{width:100%;max-height:60vh;border-radius:12px;background:#000}
+    .controls{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
+    button{padding:10px 16px;border-radius:10px;border:1px solid #2b3140;background:#222a36;color:#fff;cursor:pointer}
+    button[disabled]{opacity:.6;cursor:not-allowed}
+    #result{font-size:18px;margin:8px 0 2px}
+    #sub{opacity:.8;font-size:14px}
+    .pill{display:inline-block;border:1px solid #2b3140;border-radius:999px;padding:4px 10px;margin-right:6px;margin-top:6px;font-size:13px}
+    .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .muted{opacity:.7}
+    .footer{opacity:.6;font-size:12px;margin-top:14px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>📷 Распознавание планшетов (ONNX Web)</h1>
+
+    <div class="card">
+      <video id="video" playsinline muted></video>
+
+      <div class="controls">
+        <button id="btnStart">Старт камеры</button>
+        <button id="btnStop" disabled>Стоп</button>
+        <button id="btnFlip">Поменять камеру</button>
+      </div>
+
+      <div id="result">Готово к запуску…</div>
+      <div id="sub" class="muted">Загрузится модель и карта классов.</div>
+
+      <div class="row">
+        Топ-3:
+        <span id="topk"></span>
+      </div>
+
+      <div class="footer">
+        Советы: на телефоне нужен HTTPS (GitHub Pages подойдёт). На iOS камера запускается только после клика.
+      </div>
+    </div>
+  </div>
+
 <script>
-const MODEL_URL='web_model/model.json', MAP_URL='class_mapping.json';
-let model,mapping;
-async function init(){
-  model=await tf.loadLayersModel(MODEL_URL);
-  mapping=await fetch(MAP_URL).then(r=>r.json());
-  const v=document.getElementById('video');
-  const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-  v.srcObject=s; await new Promise(r=>v.onloadedmetadata=r);
-  setInterval(()=>predict(v),600);
-  document.getElementById('result').innerText='Камера готова';
+/** ======== НАСТРОЙКИ ======== */
+const MODEL_URL = 'web_model/model.onnx';
+const MAP_URL   = 'class_mapping.json';
+const INPUT_SIZE = 224;            // размер, на который ресайзим кадр
+const LOOP_INTERVAL_MS = 150;      // частота инференса (~6-7 FPS)
+const USE_NCHW = true;             // tf2onnx обычно экспортирует NCHW [1,3,H,W]
+// Если твой ONNX ожидает NHWC — поставь false и см. функцию preprocessToTensor
+
+/** ======== ГЛОБАЛ ======== */
+let session = null, mapping = null;
+let video = null, stream = null;
+let usingBack = true;
+let rafId = null;
+let lastTs = 0;
+
+/** ======== ЗАГРУЗКА МОДЕЛИ И МАППИНГА ======== */
+async function loadAll(){
+  document.getElementById('result').innerText = 'Загрузка модели…';
+  session = await ort.InferenceSession.create(MODEL_URL, {
+    executionProviders: ['wasm'], // можно ['webgl'] для ускорения (не везде стабилен)
+    graphOptimizationLevel: 'all'
+  });
+  mapping = await fetch(MAP_URL).then(r=>r.json());
+  document.getElementById('result').innerText = 'Модель загружена. Нажми «Старт камеры».';
+  document.getElementById('sub').innerText = `Вход: ${INPUT_SIZE}×${INPUT_SIZE}, классов: ${Object.keys(mapping).length}`;
 }
-async function predict(v){
-  const x=tf.tidy(()=>tf.image.resizeBilinear(tf.browser.fromPixels(v),[224,224]).toFloat().div(127.5).sub(1).expandDims(0));
-  let y=model.predict(x); if(y.softmax) y=y.softmax();
-  const p=await y.data(); const i=p.indexOf(Math.max(...p));
-  const name=(mapping[String(i)]??`class_${i}`), conf=(p[i]*100).toFixed(1);
-  document.getElementById('result').innerText=`🧩 ${name} (${conf}%)`;
-  tf.dispose([x,y]);
+
+/** ======== КАМЕРА ======== */
+async function startCamera(){
+  if(stream) await stopCamera();
+  const constraints = {
+    video: {
+      facingMode: usingBack ? { ideal: 'environment' } : 'user'
+    },
+    audio: false
+  };
+  stream = await navigator.mediaDevices.getUserMedia(constraints);
+  video = document.getElementById('video');
+  video.srcObject = stream;
+  video.muted = true;
+  await video.play();
 }
-init().catch(e=>document.getElementById('result').innerText='Ошибка: '+e.message);
-</script></body></html>
+
+async function stopCamera(){
+  if(stream){
+    for(const t of stream.getTracks()) t.stop();
+  }
+  stream = null;
+  if(video) video.srcObject = null;
+}
+
+/** ======== ПРЕПРОЦЕСС ======== */
+function preprocessToTensor(v){
+  // Кадр -> 224×224 -> float32 -> нормировка [-1,1]
+  const cvs = document.createElement('canvas');
+  cvs.width = INPUT_SIZE; cvs.height = INPUT_SIZE;
+  const ctx = cvs.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(v, 0, 0, INPUT_SIZE, INPUT_SIZE);
+  const { data } = ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
+
+  const wh = INPUT_SIZE * INPUT_SIZE;
+  if (USE_NCHW) {
+    // R блок, потом G, потом B: [1,3,H,W]
+    const floats = new Float32Array(wh * 3);
+    for (let i = 0, p = 0; i < wh; i++){
+      const r = data[p++], g = data[p++], b = data[p++]; p++; // skip A
+      floats[i]        = (r / 127.5 - 1);
+      floats[i + wh]   = (g / 127.5 - 1);
+      floats[i + 2*wh] = (b / 127.5 - 1);
+    }
+    return new ort.Tensor('float32', floats, [1, 3, INPUT_SIZE, INPUT_SIZE]);
+  } else {
+    // NHWC: RGBRGB… в [1,H,W,3]
+    const floats = new Float32Array(wh * 3);
+    for (let i = 0, p = 0, q = 0; i < wh; i++){
+      const r = data[p++], g = data[p++], b = data[p++]; p++;
+      floats[q++] = (r / 127.5 - 1);
+      floats[q++] = (g / 127.5 - 1);
+      floats[q++] = (b / 127.5 - 1);
+    }
+    return new ort.Tensor('float32', floats, [1, INPUT_SIZE, INPUT_SIZE, 3]);
+  }
+}
+
+/** ======== ИНФЕРЕНС ЦИКЛ ======== */
+async function predictLoop(ts){
+  if (!lastTs || ts - lastTs >= LOOP_INTERVAL_MS) {
+    lastTs = ts;
+    try {
+      const x = preprocessToTensor(video);
+      const inputName = session.inputNames[0];
+      const outMap = await session.run({ [inputName]: x });
+      const outName = session.outputNames[0];
+      const logits = outMap[outName].data; // Float32Array
+      const { top1Idx, top1Prob, top3 } = topkSoftmax(logits, 3);
+
+      const name = mapping[String(top1Idx)] ?? `class_${top1Idx}`;
+      document.getElementById('result').innerText = `🧩 ${name} (${(top1Prob*100).toFixed(1)}%)`;
+      document.getElementById('sub').innerText = `Класс #${top1Idx}`;
+      document.getElementById('topk').innerHTML = top3.map(
+        ({idx, prob}) => `<span class="pill">${mapping[String(idx)] ?? 'class_'+idx} — ${(prob*100).toFixed(1)}%</span>`
+      ).join(' ');
+    } catch (e) {
+      document.getElementById('result').innerText = 'Ошибка инференса: ' + e.message;
+    }
+  }
+  rafId = requestAnimationFrame(predictLoop);
+}
+
+function topkSoftmax(logits, k=3){
+  // softmax + top-k вручную (без сторонних библиотек)
+  let maxLogit = -Infinity;
+  for (let i=0;i<logits.length;i++) if (logits[i] > maxLogit) maxLogit = logits[i];
+  let sum = 0;
+  const exps = new Float32Array(logits.length);
+  for (let i=0;i<logits.length;i++){ const e = Math.exp(logits[i] - maxLogit); exps[i] = e; sum += e; }
+
+  const probs = new Float32Array(logits.length);
+  for (let i=0;i<logits.length;i++) probs[i] = exps[i] / sum;
+
+  const idxs = [...probs.keys()];
+  idxs.sort((a,b)=>probs[b]-probs[a]);
+  const top1Idx = idxs[0], top1Prob = probs[top1Idx];
+  const top3 = idxs.slice(0, k).map(i=>({idx:i, prob:probs[i]}));
+  return { top1Idx, top1Prob, top3 };
+}
+
+/** ======== UI КНОПКИ ======== */
+document.getElementById('btnStart').addEventListener('click', async ()=>{
+  try{
+    document.getElementById('btnStart').disabled = true;
+    await loadAll();
+    await startCamera();
+    document.getElementById('btnStop').disabled = false;
+    document.getElementById('result').innerText = 'Камера запущена. Распознаём…';
+    rafId = requestAnimationFrame(predictLoop);
+  }catch(e){
+    document.getElementById('result').innerText = 'Ошибка запуска: ' + e.message;
+    document.getElementById('btnStart').disabled = false;
+  }
+});
+
+document.getElementById('btnStop').addEventListener('click', async ()=>{
+  try{
+    if (rafId) cancelAnimationFrame(rafId);
+    await stopCamera();
+    document.getElementById('btnStop').disabled = true;
+    document.getElementById('btnStart').disabled = false;
+    document.getElementById('result').innerText = 'Остановлено.';
+  }catch(e){
+    document.getElementById('result').innerText = 'Ошибка остановки: ' + e.message;
+  }
+});
+
+document.getElementById('btnFlip').addEventListener('click', async ()=>{
+  usingBack = !usingBack;
+  if (stream){
+    await startCamera();
+  }
+});
+</script>
+</body>
+</html>

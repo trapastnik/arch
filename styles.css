@@ -1,0 +1,51 @@
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: #0f1115;
+  color: #e6e6e6;
+  font: 15px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, sans-serif;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.wrap { max-width: 720px; margin: 0 auto; padding: 10px 12px; }
+h1 { font-size: 17px; font-weight: 600; margin: 0 0 8px; }
+.card {
+  background: #171a21; border: 1px solid #262a33; border-radius: 12px;
+  padding: 10px; box-shadow: 0 4px 18px rgba(0,0,0,.25);
+}
+.video-wrap { position: relative; width: 100%; border-radius: 10px; overflow: hidden; background: #000; }
+video { display: block; width: 100%; max-height: 50vh; border-radius: 10px; background: #000; }
+canvas#overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 6px; align-items: center; }
+button {
+  padding: 8px 12px; border-radius: 9px; border: 1px solid #2b3140;
+  background: #222a36; color: #fff; cursor: pointer; font-size: 14px;
+}
+button[disabled]{ opacity:.6; cursor:not-allowed; }
+label.switch { font-size: 13px; display:flex; align-items:center; gap:6px; opacity:.9; }
+#result { font-size: 16px; margin: 6px 0 2px; }
+#sub { opacity:.8; font-size:13px; margin-bottom:4px; min-height:18px; }
+
+#progressWrap { display:none; height:6px; background:#11151c; border:1px solid #283041;
+  border-radius:999px; overflow:hidden; margin:4px 0 6px; }
+#progress { height:100%; width:0%; background:#4a90e2; }
+
+.topk-row { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
+.label { font-size:13px; opacity:.85; white-space:nowrap; }
+.pill { display:inline-block; border:1px solid #2b3140; border-radius:999px; padding:3px 8px; white-space:nowrap; font-size:12px; margin-right:4px; }
+
+details { margin-top:6px; }
+details>summary { list-style:none; cursor:pointer; font-size:12px; opacity:.75; }
+details>summary::-webkit-details-marker{ display:none; }
+pre {
+  white-space:pre-wrap; word-break:break-word; background:#11151c; border:1px solid #283041;
+  padding:8px; border-radius:8px; font-size:12px; max-height:22vh; overflow:auto; margin-top:6px;
+}
+.footer { opacity:.6; font-size:11.5px; margin-top:8px; }
+
+@media (max-width: 390px) {
+  #result { font-size: 15px; }
+  button { font-size: 13px; padding: 7px 10px; }
+}
