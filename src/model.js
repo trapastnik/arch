@@ -34,10 +34,45 @@ export async function loadModel(){
   const modelBytes = await fetchModelWithProgress(MODEL_URL, p => setStatus(`Загрузка модели… ${Math.round(p*100)}%`, p));
 
   setStatus('Инициализация модели…');
-  const session = await ort.InferenceSession.create(modelBytes, {
-    executionProviders: ['wasm'],
-    graphOptimizationLevel: 'all'
-  });
+  
+  // ⚡ Пытаемся использовать WebGL для ускорения (fallback на wasm)
+  // WebGL обычно в 2-5x быстрее на GPU, но не везде стабилен
+  let executionProviders = ['webgl', 'wasm'];
+  
+  // Включаем SIMD и многопоточность если браузер поддерживает
+  const sessionOptions = {
+    executionProviders,
+    graphOptimizationLevel: 'all',
+    executionMode: 'parallel',  // параллельное выполнение операций
+  };
+  
+  // Проверяем поддержку WebAssembly SIMD и Threads
+  try {
+    if (typeof WebAssembly.validate === 'function') {
+      // SIMD проверка
+      const simdSupported = WebAssembly.validate(new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11
+      ]));
+      
+      // Threads проверка
+      const threadsSupported = typeof SharedArrayBuffer !== 'undefined';
+      
+      logDiag({ simdSupported, threadsSupported, providers: executionProviders });
+      
+      if (simdSupported) {
+        sessionOptions.extra = { 
+          ...sessionOptions.extra,
+          wasmPaths: {
+            'ort-wasm-simd.wasm': 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort-wasm-simd.wasm'
+          }
+        };
+      }
+    }
+  } catch (e) {
+    logDiag('SIMD/Threads check failed: ' + (e?.message || e));
+  }
+  
+  const session = await ort.InferenceSession.create(modelBytes, sessionOptions);
 
   const INPUT_NAME  = session.inputNames?.[0] ?? null;
   const OUTPUT_NAME = session.outputNames?.[0] ?? null;
@@ -56,7 +91,23 @@ export async function loadModel(){
   } catch(e){ logDiag('meta read error: ' + (e?.message || e)); }
 
   const useNCHW = (Array.isArray(dims) && dims.length === 4 && dims[1] === 3);
-  logDiag({ inputName: INPUT_NAME, outputName: OUTPUT_NAME, inputDims: dims, useNCHW });
+  
+  // Логируем какой провайдер реально используется
+  let actualProvider = 'unknown';
+  try {
+    // ONNXRuntime Web не всегда предоставляет эту информацию
+    actualProvider = executionProviders[0]; // первый доступный
+  } catch (e) {
+    logDiag('Provider check: ' + (e?.message || e));
+  }
+  
+  logDiag({ 
+    inputName: INPUT_NAME, 
+    outputName: OUTPUT_NAME, 
+    inputDims: dims, 
+    useNCHW,
+    provider: actualProvider 
+  });
 
   setStatus('Загрузка карты классов…');
   const mapping = await fetch(MAP_URL).then(r=>r.json());

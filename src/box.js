@@ -1,7 +1,7 @@
 import { EDGE_SIZE } from './constants.js';
 
-// Поиск рамки планшета на уменьшенном кадре (Sobel + интегральное изображение)
-export function findTabletBox(videoEl, overlay){
+// Поиск КВАДРАТНОЙ рамки планшета (исправлено для квадратных планшетов)
+export function findTabletBox(videoEl, overlay, emaAlpha = 0, prevBox = null){
   if (!overlay) return null;
   const vw = overlay.width, vh = overlay.height;
   const s = EDGE_SIZE;
@@ -16,6 +16,7 @@ export function findTabletBox(videoEl, overlay){
   const gyK = [-1,-2,-1,0,0,0,1,2,1];
   const gray = new Float32Array(W*H);
   for(let i=0,p=0;i<gray.length;i++){ const r=data[p++],g=data[p++],b=data[p++]; p++; gray[i]=(0.299*r+0.587*g+0.114*b); }
+  
   const mag = new Float32Array(W*H);
   for(let y=1;y<H-1;y++){
     for(let x=1;x<W-1;x++){
@@ -29,6 +30,7 @@ export function findTabletBox(videoEl, overlay){
       mag[y*W + x] = Math.hypot(gx,gy);
     }
   }
+  
   // интегральная сумма
   const ii = new Float32Array((W+1)*(H+1));
   for(let y=1;y<=H;y++){
@@ -40,27 +42,40 @@ export function findTabletBox(videoEl, overlay){
   }
   const sumRect = (x0,y0,x1,y1)=> ii[y1*(W+1)+x1] - ii[y0*(W+1)+x1] - ii[y1*(W+1)+x0] + ii[y0*(W+1)+x0];
 
-  const aspects = [1.33, 1.5, 1.6];
+  // ⭐ ТОЛЬКО КВАДРАТЫ (aspect ratio = 1.0)
   let best = {score:-1, x:0,y:0,w:W,h:H};
-  for(const ar of aspects){
-    for(let w = Math.floor(W*0.45); w <= Math.floor(W*0.95); w += Math.max(8, Math.floor(W*0.08))){
-      const h = Math.floor(w / ar);
-      if (h<16 || h>H) continue;
-      for(let x=1; x+w < W; x += Math.max(6, Math.floor(W*0.06))){
-        for(let y=1; y+h < H; y += Math.max(6, Math.floor(H*0.06))){
-          const s = sumRect(x, y, x+w, y+h) / (w*h);
-          if (s > best.score) best = {score:s, x, y, w, h};
-        }
+  
+  // Ищем квадраты от 45% до 95% ширины экрана
+  for(let size = Math.floor(W*0.45); size <= Math.floor(W*0.95); size += Math.max(6, Math.floor(W*0.08))){
+    if (size < 16 || size > Math.min(W,H)) continue;
+    
+    for(let x=1; x+size < W; x += Math.max(4, Math.floor(W*0.05))){
+      for(let y=1; y+size < H; y += Math.max(4, Math.floor(H*0.05))){
+        const s = sumRect(x, y, x+size, y+size) / (size*size);
+        if (s > best.score) best = {score:s, x, y, w:size, h:size};
       }
     }
   }
+  
   const scaleX = vw / W, scaleY = vh / H;
-  return {
+  let newBox = {
     x: Math.max(0, Math.floor(best.x * scaleX)),
     y: Math.max(0, Math.floor(best.y * scaleY)),
     w: Math.max(1, Math.floor(best.w * scaleX)),
     h: Math.max(1, Math.floor(best.h * scaleY)),
   };
+
+  // EMA сглаживание (если есть предыдущий бокс и alpha > 0)
+  if (prevBox && emaAlpha > 0) {
+    newBox = {
+      x: Math.round(emaAlpha * prevBox.x + (1-emaAlpha) * newBox.x),
+      y: Math.round(emaAlpha * prevBox.y + (1-emaAlpha) * newBox.y),
+      w: Math.round(emaAlpha * prevBox.w + (1-emaAlpha) * newBox.w),
+      h: Math.round(emaAlpha * prevBox.h + (1-emaAlpha) * newBox.h),
+    };
+  }
+
+  return newBox;
 }
 
 export function drawBox(ctx, overlay, box){

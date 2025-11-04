@@ -24,6 +24,38 @@ button {
   background: #222a36; color: #fff; cursor: pointer; font-size: 14px;
 }
 button[disabled]{ opacity:.6; cursor:not-allowed; }
+
+/* ========== ПАНЕЛЬ НАСТРОЕК ========== */
+.settings {
+  background: #1a1e26; border: 1px solid #262d3a; border-radius: 10px;
+  padding: 10px; margin: 8px 0; display: flex; flex-direction: column; gap: 10px;
+}
+.settings .row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.settings label {
+  font-size: 13px; opacity: .85; min-width: 110px;
+}
+.settings select {
+  flex: 1; min-width: 140px;
+  padding: 6px 10px; border-radius: 8px; border: 1px solid #2b3140;
+  background: #222a36; color: #fff; font-size: 13px;
+}
+.settings input[type="range"] {
+  flex: 1; min-width: 120px;
+  height: 6px; border-radius: 3px; background: #2b3140;
+  outline: none; -webkit-appearance: none;
+}
+.settings input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%; background: #4a90e2;
+  cursor: pointer;
+}
+.settings input[type="range"]::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%; background: #4a90e2;
+  cursor: pointer; border: none;
+}
+
 label.switch { font-size: 13px; display:flex; align-items:center; gap:6px; opacity:.9; }
 #result { font-size: 16px; margin: 6px 0 2px; }
 #sub { opacity:.8; font-size:13px; margin-bottom:4px; min-height:18px; }
@@ -32,7 +64,7 @@ label.switch { font-size: 13px; display:flex; align-items:center; gap:6px; opaci
   border-radius:999px; overflow:hidden; margin:4px 0 6px; }
 #progress { height:100%; width:0%; background:#4a90e2; }
 
-.topk-row { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
+.topk-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; margin-top: 6px; }
 .label { font-size:13px; opacity:.85; white-space:nowrap; }
 .pill { display:inline-block; border:1px solid #2b3140; border-radius:999px; padding:3px 8px; white-space:nowrap; font-size:12px; margin-right:4px; }
 
@@ -48,4 +80,5 @@ pre {
 @media (max-width: 390px) {
   #result { font-size: 15px; }
   button { font-size: 13px; padding: 7px 10px; }
+  .settings label { min-width: 90px; font-size: 12px; }
 }

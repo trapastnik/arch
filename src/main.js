@@ -1,4 +1,4 @@
-import { INPUT_SIZE, LOOP_INTERVAL_MS } from './constants.js';
+import { INPUT_SIZE, LOOP_INTERVAL_MS, DEFAULT_CROP_MODE, DEFAULT_NORM_MODE, DEFAULT_ROI_PAD, DEFAULT_BOX_EMA } from './constants.js';
 import { $, setText, setStatus, logDiag, resizeOverlay } from './ui.js';
 import { startCamera, stopCamera, hasStream } from './camera.js';
 import { loadModel } from './model.js';
@@ -12,7 +12,13 @@ let state = {
   useNCHW: false,
   mapping: null,
   usingBack: true,
-  autoBox: true,
+  
+  // Настройки препроцессинга (управляются через UI)
+  cropMode: DEFAULT_CROP_MODE,
+  normMode: DEFAULT_NORM_MODE,
+  roiPad: DEFAULT_ROI_PAD,
+  boxEma: DEFAULT_BOX_EMA,
+  
   lastBox: null,
   rafId: null,
   lastTs: 0,
@@ -70,22 +76,40 @@ function loop(ts){
   if (!state.lastTs || ts - state.lastTs >= LOOP_INTERVAL_MS) {
     state.lastTs = ts;
     try{
-      // авторамка
-      if (state.autoBox) {
-        state.lastBox = findTabletBox(state.video, state.overlay) || state.lastBox;
+      // Поиск рамки (если режим auto)
+      if (state.cropMode === 'auto') {
+        state.lastBox = findTabletBox(state.video, state.overlay, state.boxEma, state.lastBox) || state.lastBox;
         drawBox(state.octx, state.overlay, state.lastBox);
       } else {
         drawBox(state.octx, state.overlay, null);
       }
 
-      // препроцесс + инференс
-      const x = preprocessToTensor(state.video, state.autoBox ? state.lastBox : null, state.useNCHW, state.overlay);
+      // Препроцесс + инференс
+      const x = preprocessToTensor(
+        state.video, 
+        state.cropMode, 
+        state.normMode, 
+        state.roiPad, 
+        state.lastBox, 
+        state.useNCHW, 
+        state.overlay
+      );
+      
       state.session.run({ [state.INPUT_NAME]: x }).then(out => {
         const logits = out[state.OUTPUT_NAME].data;
         const { top1Idx, top1Prob, top3 } = topkSoftmax(logits, 3);
         const name = state.mapping[String(top1Idx)] ?? `class_${top1Idx}`;
+        
         setText('result', `🧩 ${name} (${(top1Prob*100).toFixed(1)}%)`);
-        setText('sub', `Класс #${top1Idx} • Формат: ${state.useNCHW?'NCHW':'NHWC'}${state.autoBox?' • ROI: on':''}`);
+        
+        const info = [
+          `Класс #${top1Idx}`,
+          `Формат: ${state.useNCHW?'NCHW':'NHWC'}`,
+          `Crop: ${state.cropMode}`,
+          `Norm: ${state.normMode}`
+        ].join(' • ');
+        setText('sub', info);
+        
         document.getElementById('topk').innerHTML = top3.map(
           ({idx, prob}) => `<span class="pill">${state.mapping[String(idx)] ?? 'class_'+idx} — ${(prob*100).toFixed(1)}%</span>`
         ).join('');
@@ -103,14 +127,39 @@ function loop(ts){
   state.rafId = requestAnimationFrame(loop);
 }
 
-// ——— события UI
+// ========== UI События ==========
 document.getElementById('btnStart').addEventListener('click', onStartClick);
 document.getElementById('btnStop').addEventListener('click', onStopClick);
 document.getElementById('btnFlip').addEventListener('click', onFlipClick);
-document.getElementById('chkAutoBox').addEventListener('change', (e)=>{
-  state.autoBox = e.target.checked;
-  if(!state.autoBox) drawBox(state.octx, state.overlay, null);
+
+// Режим кадрирования
+document.getElementById('selCrop').addEventListener('change', (e)=>{
+  state.cropMode = e.target.value;
+  if(state.cropMode !== 'auto') {
+    state.lastBox = null;
+    drawBox(state.octx, state.overlay, null);
+  }
+  logDiag(`Crop mode: ${state.cropMode}`);
 });
 
-// начальный подсказочный текст
+// Режим нормализации
+document.getElementById('selNorm').addEventListener('change', (e)=>{
+  state.normMode = e.target.value;
+  logDiag(`Norm mode: ${state.normMode}`);
+});
+
+// ROI padding слайдер
+document.getElementById('rngPad').addEventListener('input', (e)=>{
+  state.roiPad = parseFloat(e.target.value);
+  document.getElementById('valPad').textContent = state.roiPad.toFixed(2);
+});
+
+// EMA сглаживание слайдер
+document.getElementById('rngEma').addEventListener('input', (e)=>{
+  state.boxEma = parseFloat(e.target.value);
+  document.getElementById('valEma').textContent = state.boxEma.toFixed(2);
+});
+
+// Начальный подсказочный текст
 setText('sub', `Вход: ${INPUT_SIZE}×${INPUT_SIZE}. Нажми «Старт камеры».`);
+logDiag(`Defaults: crop=${state.cropMode}, norm=${state.normMode}, pad=${state.roiPad}, ema=${state.boxEma}`);
