@@ -72,5 +72,57 @@
   
   <!-- Наш лёгкий пайплайн Auto-ROI -->
   <script src="src/pipeline-auto-roi.js"></script>
+
+  <style>
+    /* Прячем старые перегруженные панели */
+    .devpanel, .controls, .long-ui { display: none !important; }
+  
+    /* Контейнер для видео и оверлея */
+    #arch-app { position: relative; display: inline-block; }
+    #overlay, #hud { position: absolute; left: 0; top: 0; pointer-events: none; }
+  
+    /* Мини-бейдж в углу (минимальный UI) */
+    .badge {
+      position: absolute; left: 12px; top: 12px;
+      background: rgba(0,0,0,0.55); color: #fff; padding: 6px 10px;
+      border-radius: 6px; font: 14px/1.2 system-ui, sans-serif;
+    }
+  
+    /* Кнопка Debug */
+    #debugToggle {
+      position: fixed; right: 14px; bottom: 14px; z-index: 1000;
+      background: #111; color: #fff; border: 0; padding: 8px 12px;
+      border-radius: 8px; cursor: pointer;
+    }
+  
+    /* Debug-панель */
+    #debugPanel {
+      position: fixed; right: 14px; bottom: 56px; width: 360px; max-height: 60vh;
+      overflow: auto; background: rgba(18,18,18,0.96); color: #dcdcdc;
+      border: 1px solid #333; border-radius: 10px; padding: 10px 12px;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+      display: none; z-index: 1000;
+    }
+    #debugPanel pre { white-space: pre-wrap; margin: 0; }
+    .roi-strip { display: flex; gap: 6px; margin-top: 8px; }
+    .roi-strip canvas { width: 80px; height: 80px; border: 1px solid #333; }
+  </style>
+  
+  <div id="arch-app">
+    <!-- здесь уже есть твоё <video> — не трогаем разметку; просто кладём поверх канвасы -->
+    <canvas id="overlay"></canvas>
+    <div id="hud" class="badge">…</div>
+  </div>
+  
+  <button id="debugToggle" title="D">Debug</button>
+  <div id="debugPanel">
+    <div id="debugMetrics"></div>
+    <div class="roi-strip" id="roiStrip"></div>
+  </div>
+  
+  <!-- Подключаем пайплайн поверх текущего кода -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+  <script src="src/pipeline-auto-roi.js"></script>
 </body>
 </html>
